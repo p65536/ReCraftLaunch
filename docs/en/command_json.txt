@@ -1,0 +1,181 @@
+======================
+ commands.json Format
+======================
+
+commands.json stores registered commands. This page explains the file format and interpretation for manual editing.
+See the `User Manual <./index.html>`_ for graphical registration and editing, and the `Operation Reference <./commands.html>`_ for operations.
+
+Location and reloading
+======================
+
+Edit commands.json in the selected settings location: the application's settings folder by default, or ``%APPDATA%/ReCraftLaunch`` when AppData folder is selected.
+Run reload after manual edits to reapply the registrations.
+
+.. _json-load-errors:
+
+Behavior when loading fails
+===========================
+
+Errors are reported when commands.json has invalid syntax, schema, or command names, or when the file cannot be read.
+Open the console with ``Ctrl+F10`` to read startup and reload errors.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - When loading occurs
+     - Behavior on failure
+   * - Application startup
+     - Startup continues without JSON registrations. Built-in commands and custom.py settings that apply successfully remain available. A valid JSON file from a previous application session is not automatically restored.
+   * - reload during the current session
+     - Commands, keys, and custom settings active before the failed load are retained. Commands remain executable using the last valid registrations. This retains the running state; it does not repair or restore the JSON file on disk.
+   * - Command List or command editor
+     - Each reads the JSON file from disk again. If loading the list fails, an error is shown and the list does not open. If loading the editor fails, the editor may open, but saving is blocked. The original JSON and entered text are preserved.
+
+Even when old commands remain executable after a failed reload, the list and editor use the current file. Duplicate names or JSON syntax errors still prevent the list from opening and the editor from saving.
+This prevents manually edited files from being overwritten with old registrations.
+A missing file is treated as no JSON registrations, rather than a load error.
+
+Correct duplicate names, JSON syntax, or schema errors directly in commands.json with a text editor. If the file cannot be read, check the settings location and access permissions.
+Then run reload and reopen the list or editor. An editor whose saving was blocked by a load failure must be reopened even after the file is corrected.
+
+Command names and launch actions
+========================================
+
+Top-level keys are command names. Names are case-insensitive and managed in lowercase.
+Duplicate names within the same commands.json cause a load error. This includes identical names and names that become equal after ``lower()``, such as ``Tool`` and ``tool``.
+The error identifies the duplicate names. The command list will not open, and saving from the editor is blocked. Correct the file directly, then run reload.
+Command names cannot contain a semicolon (``;``), because it separates the name from arguments.
+Whitespace is forbidden anywhere in a name, including at either end. This includes spaces, tabs, line breaks, full-width spaces, non-breaking spaces, and all other characters for which Python's ``str.isspace()`` is true.
+``foo``, ``foo_bar``, and ``foo-bar`` are valid; `` foo``, ``foo ``, and ``foo bar`` are invalid.
+Use the key ``""`` for an empty command. A whitespace-only name is invalid and is not an empty command.
+Each command can define four independent launch actions:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - JSON key
+     - Editor Modifier
+     - Launch keys
+   * - target
+     - None
+     - Enter
+   * - on_ctrl
+     - Ctrl
+     - Ctrl+Enter
+   * - on_shift
+     - Shift
+     - Shift+Enter
+   * - on_ctrl_shift
+     - Ctrl+Shift
+     - Ctrl+Shift+Enter
+
+Example
+=======
+
+As in the sample, this example launches Notepad with np and references it from the empty command.
+An additional Ctrl+Enter action opens the specified folder from np. Adjust paths to your environment.
+
+.. code-block:: json
+
+    {
+      "np": {
+        "target": {
+          "link": "notepad.exe",
+          "args": "",
+          "workdir": "",
+          "view_mode": "normal"
+        },
+        "on_ctrl": {
+          "link": "C:\\Documents",
+          "args": "",
+          "workdir": "",
+          "view_mode": "normal"
+        }
+      },
+      "": {
+        "target": {
+          "link": "np"
+        }
+      }
+    }
+
+Launch-action fields
+====================
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 20 60
+
+   * - JSON key
+     - Editor field
+     - Meaning
+   * - link
+     - Link
+     - Required. Program, file, folder, URL, or another registered command name.
+   * - args
+     - Args
+     - Optional argument string passed to the target. Defaults to empty.
+   * - workdir
+     - WorkDir
+     - Optional working directory. Defaults to empty.
+   * - view_mode
+     - ViewMode
+     - Optional: normal, minimized, or maximized. Missing values default to normal.
+
+The editor label is Args; its JSON key is ``args`` and its value is a single string, not an array.
+
+Use absolute paths for files and folders in Link. Executable names (such as ``notepad.exe``), registered command references, URLs, and environment variables that expand to absolute paths are also supported. Relative paths such as ``tools\tool.exe``, ``.\tool.exe``, ``..\folder``, ``\folder``, and ``C:folder`` are rejected regardless of WorkDir or target existence.
+JSON containing a relative Link still loads and reload succeeds. Execution rejects the selected action after resolving aliases and expanding environment variables and macros; the console reports an error with the command name and Link. Containing-folder and folder-root replacement actions use the same rule. Other registrations and unselected modifier actions do not block execution. Relative paths in Args remain allowed.
+The GUI warns and refuses to save relative Links, retaining the input and original file. Links starting with ``%param%`` depend on runtime arguments and receive their final check at execution. F12 does not execute the target and still copies the terminal Link string, including relative notation.
+
+A Link may enclose an entire absolute path in one pair of double quotes (JSON value example: ``"\"C:\\Program Files\\Tool\\tool.exe\""``). After alias, environment-variable, and macro resolution, handle only that outer pair and use the same path for normal launch, containing-folder actions (Shift+Enter by default), folder-root replacement, and automatic WorkDir selection. Put arguments in Args, separately from Link. F12 copies the original terminal Link, including quotes.
+
+An explicit WorkDir takes priority. For aliases, the first nonempty WorkDir along the reference chain wins. If none is specified, environment variables and runtime macros in Link are expanded at execution; if that exact path is an existing file, its parent becomes the working directory. Missing paths, bare executable names whose files have not been located, folders, and URLs receive no automatic directory and retain the existing unspecified-directory behavior.
+
+Escape backslashes according to JSON rules, for example ``C:\\Programs\\Tool\\tool.exe``.
+Zero launch actions are allowed: for example, ``{"disabled": {}}`` is valid. Manual JSON editing also allows ``{"": {}}``.
+JSON registrations take priority over built-in commands of the same name. For example, ``{"about": {}}`` does nothing when entered by name or referenced by an alias, without falling back to the built-in command. Direct key bindings to built-in functions are unaffected.
+Missing modifier actions use config > Modifier default actions.
+An explicitly registered command-specific action takes priority.
+
+References to other commands
+============================
+
+Set link to another registered command name to use its target.
+Ctrl/Shift select the action on the caller, but the referenced command always uses ``target`` (the normal action), without inheriting the caller's Ctrl/Shift modifiers.
+For example, if the caller's ``on_ctrl`` links to another command, that command runs its ``target``, not its ``on_ctrl``.
+The caller's working directory takes priority when specified; otherwise the referenced command's directory is used.
+ViewMode always comes from the caller. If omitted, it is Normal; the referenced command's ViewMode is not inherited.
+Do not create circular command references. When a cycle is detected during execution, that execution stops and the console shows the reference path, such as ``a → b → a``.
+
+Arguments
+=========
+
+Main input uses ``name;Windows argument string``, splitting only at the first semicolon.
+Ignore leading/trailing whitespace only in the name and search registrations first, preserving their priority over same-name OS executables. Registered names themselves cannot contain whitespace. Keep the original input for history and all argument text after the semicolon unchanged.
+Use ``name;arg1 arg2`` for multiple arguments, ``name;"argument 1" arg2`` for spaces, and ``""`` for an empty argument.
+For example, ``np;"Z:\Temp\test.txt" -Y=3`` passes exactly ``"Z:\Temp\test.txt" -Y=3``.
+Later semicolons remain intact: ``name;one;two`` passes ``one;two``. Direct URL input is handled as one complete URL.
+
+JSON args remains a single string. Quotes, spaces and backslashes are preserved, matching the same text supplied from main input (escape quotes/backslashes according to JSON rules in the JSON source).
+For direct targets and aliases alike, ``%param%`` inserts the input string at that position. Without it, append input after fixed args with one separating space; no extra space is added when input is absent.
+Across alias chains, target fixed args precede caller fixed args and input, without changing each string's internal spelling.
+The target interprets quotes. Fixed Args retains its existing environment-variable and ``%%`` expansion; inserted input is not expanded again. The GUI preserves leading/trailing spaces in Args.
+
+Saving from the graphical interface
+========================================
+
+Saving writes link, args, workdir, and view_mode for each registered action.
+Missing args and workdir become empty strings; missing view_mode becomes normal. Unregistered modifier actions are not added.
+Reading alone does not rewrite the file. Saving unchanged normalized content skips the write.
+
+Saving writes a temporary file in the same directory and replaces the original after success. Failure preserves the original.
+The empty command uses the key ``""``. Its Name is fixed in the editor and it cannot be deleted from the list.
+GUI saving requires at least one Link for the empty command. Named commands can be saved with zero actions.
+The GUI does not silently trim whitespace from names. Saving reports an error and preserves the input and original file.
+Names containing semicolons or whitespace cause startup and reload validation errors. However, when names are unique and the JSON syntax and launch-action schema are valid, the list allows these invalid names to be inspected and deleted, but not duplicated. Duplicate names prevent the list itself from opening, so correct them directly in the file.
+Manual deletion from commands.json does not cause automatic restoration.
+The list always shows an entry point for editing the empty command, even if unregistered.
+Displaying that row does not register ``""``; saving from its editor does.

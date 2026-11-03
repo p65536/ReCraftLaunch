@@ -1,0 +1,32 @@
+root = true
+
+[*]
+charset = utf-8
+
+[*.cpp]
+charset = utf-8-bom
+
+[*.h]
+charset = utf-8-bom
+
+# Keep the formats used by Visual Studio's generated project files.
+[*.sln]
+charset = utf-8-bom
+
+[*.vcxproj]
+charset = utf-8-bom
+
+[*.filters]
+charset = utf-8-bom
+
+[clnch/clnch.rc]
+end_of_line = crlf
+charset = utf-16le
+
+[clnch/resource.h]
+end_of_line = crlf
+charset = utf-16le
+
+# Preserve third-party license encodings.
+[licenses/**]
+charset = unset

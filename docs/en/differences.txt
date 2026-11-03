@@ -1,0 +1,234 @@
+==============================
+ Differences from CraftLaunch
+==============================
+
+Overview
+========
+
+ReCraftLaunch is derived from CraftLaunch 3.40 by craftware.
+This page compares the 3.40 source, bundled manual, and default configuration example with current ReCraftLaunch.
+Key bindings and defaults assume that you have not overridden them in your own configuration.
+Where the old manual retains outdated API names or environment information, the 3.40 source was also checked.
+
+Running command names, paths, and URLs, Windows-format arguments, history and completion,
+drag-and-drop registration, GUI editing, hotkeys, an inactive clock, and Python extensions already exist in CraftLaunch.
+ReCraftLaunch retains these features while changing registration formats, configuration, some operations, and defaults.
+
+See the `User Manual <./index.html>`_ for procedures, the `Command Reference <./commands.html>`_ for keys,
+and `commands.json Format <./command_json.html>`_ for the registration file.
+
+Runtime and distribution
+========================
+
+- The CraftLaunch 3.40 source build configuration uses Python 3.8 x64.
+  ReCraftLaunch targets Windows x64 and bundles Python 3.15; no separate Python installation is needed.
+  Microsoft Visual C++ v14 Redistributable (x64) is required; its runtime DLLs are not bundled.
+  The Windows XP/Vista/7/8 listing in the old manual does not describe ReCraftLaunch support.
+- The executable changes from ``clnch.exe`` to ``reclnch.exe``.
+  ReCraftLaunch includes Japanese and English UI and help in one ZIP. English is the default.
+  Choose config > Language and restart to apply a language change.
+- CraftLaunch and ReCraftLaunch can run together as separate applications; assign different hotkeys when using both.
+  ReCraftLaunch copies, even in separate folders, send requests to an existing ReCraftLaunch instance.
+
+Command registration and management
+===================================
+
+Storage and editing scope
+-------------------------
+
+CraftLaunch stores commands registered through drops or the GUI in the ``COMMANDLIST`` section of ``clnch.ini``,
+and Python command definitions in ``config.py``. The list opened with the ``Command`` command edits, deletes,
+and reorders only INI registrations. Python definitions do not appear in that list.
+
+ReCraftLaunch stores GUI registrations in ``commands.json``.
+Use ``new`` to create a registration. In the main input, Ctrl+E edits the entered name, or opens the command list when input is empty.
+The list manages JSON registrations; it excludes built-in commands and commands added in Python.
+Names are case-insensitive and managed in lowercase. A JSON registration takes priority over a built-in command with the same name.
+
+- Name, target, arguments, and working directory already exist in the old version.
+  ReCraftLaunch also accepts another registered command name as a target and provides normal, minimized, and maximized modes in the GUI.
+  Each action has its own display mode; it does not inherit another command's mode. Circular references report an error at execution.
+- Normal, Ctrl, Shift, and Ctrl+Shift actions can be stored separately under one name.
+  Python could already inspect modifier keys in the old version; the addition is individual configuration through JSON and the GUI.
+- In the list, Enter / Ctrl+E edits, Insert creates, Delete removes, and Ctrl+Insert duplicates all modifier actions.
+  The old E / Shift+E bindings and Shift+Up/Down reordering are no longer used.
+  The empty command appears first, followed by names in sorted order.
+- The old list starts incremental search with F.
+  The current command list cycles through first-character matches with ordinary character keys and starts a name substring filter with Ctrl+F.
+  Enter / Esc ends only the search and restores the full list. Other lists, including history, continue to use F for search.
+- Dropping files or shortcuts onto the main window already registers commands in CraftLaunch.
+  The current list also accepts drops to open a new registration, and the editor accepts drops into the field and modifier action being edited.
+  A drop does not save immediately; confirm it in the editor.
+- A failed JSON save preserves the original file and the editor's input.
+  Apply direct JSON edits with reload.
+
+The empty command and samples
+-----------------------------
+
+The old default ``config.py`` already defines behavior for Enter with no command name.
+Its Python example brings other applications to the foreground according to the modifier keys.
+The current version also supports the JSON empty-string key ``""`` and provides an editing entry at the top of the list.
+That entry appears even without a registration; displaying it does not create one. It cannot be deleted from the list.
+
+The current bundled ``settings/_commands.json`` illustrates an empty command that refers to ``np`` to launch Notepad.
+Sample registrations such as ``np`` are inactive until you import them.
+Commands such as Google, Eijiro, and NetDrive in the old sample were also configuration examples rather than built-in commands.
+
+Input and execution
+===================
+
+Input defaults
+--------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - Item
+     - CraftLaunch 3.40
+     - ReCraftLaunch
+   * - Automatic text completion
+     - Enabled by default; config can disable it.
+     - Disabled by default. When off, no candidates are displayed or inserted, including completion with Tab or other candidate keys. config can change this.
+   * - Space / Shift+Space
+     - Select the next / previous candidate.
+     - Space inserts a space by default. config can restore candidate operations.
+   * - Tab
+     - Complete the common prefix of candidates.
+     - Same default. config can change it to clear input.
+   * - Consecutive spaces
+     - Collapse to one space.
+     - Always preserved.
+   * - History and candidates
+     - Save history and provide registered-name, file-name, and share candidates.
+     - History can be off, session-only, or persistent (default); candidates can be off, names only, or names / files / shares (default). Candidates are generated only with auto-completion on.
+   * - Input on deactivation
+     - Retain nonempty input after deactivation.
+     - Clear when switching to an external application by default; config can retain it. Moving between the main window and console preserves input.
+   * - Activation hotkey
+     - Unassigned; its default behavior is activation.
+     - Unassigned; its default behavior toggles active / inactive state.
+
+Keys and target interpretation
+------------------------------
+
+- Ctrl+E in the old default configuration opens the entered file in a text editor.
+  It now edits JSON registrations or opens their list.
+  Ctrl+S is added to open config while preserving input and history.
+- The old standard Shell command launches the same target with Ctrl or Shift held.
+  Current JSON registrations run the individual modifier action if present, otherwise config > Modifier default actions applies.
+  Initially, Ctrl and Ctrl+Shift do nothing; Shift opens the target folder.
+  Normal execution and opening a folder with a configured root replacement are also available.
+  These common settings do not apply to built-in commands, unregistered executables, or directly entered paths and URLs.
+- Four Alt+Enter combinations independently forward the entire input to external applications or arbitrary web search URLs (all disabled by default). Plain Alt+Enter alone also offers path properties and prefers properties for existing paths by default. These actions are separate from registered command Modifiers.
+  It is disabled by default. Disabled leaves the text, caret, selection, focus, and input session unchanged and performs no action.
+  Enabled actions end the input session without adding history. An option gives properties priority for existing paths.
+- F12 copies the Link string of a JSON registration's normal action, following aliases to the terminal Link without OS search, absolute-path conversion or existence checks.
+- The standard ``_ra;<target> arguments...`` command is added for launching with administrator privileges.
+  Document defaults that directly launch a regular Win32 EXE are also supported. See "Run as Administrator" for limits on DDE, DelegateExecute, packaged apps, and other forms.
+  The old version can already specify the Shell verb ``runas`` from Python; the current command also accepts registered command names.
+- In addition to registered names and directly entered paths or URLs, unregistered executables are found through PATH / PATHEXT, then App Paths.
+  Registered commands take precedence.
+- Input now consistently uses ``name;Windows argument string``. Use ``name;arg1 arg2`` for multiple arguments and ``name;"argument 1" arg2`` for spaces.
+  Only the first ``;`` separates the name. Later semicolons, quotes, spaces and backslashes reach ShellExecute unchanged. Direct URLs remain whole.
+  JSON fixed args and alias chains preserve their original spelling, inserting input at ``%param%`` or appending it when absent.
+  The old per-semicolon split and automatic re-quoting of input arguments are no longer used.
+
+Settings and Python extensions
+==============================
+
+Python extensibility already exists in CraftLaunch. Its entry file changes from ``config.py`` to ``custom.py``.
+The old version copies the bundled ``_config.py`` on first startup; the current version works without ``custom.py``.
+
+The current version separates general settings in config, command registrations in JSON, and custom behavior in ``custom.py``.
+It calls ``configure(window)`` after applying standard settings and JSON, and ``configure_ListWindow(window)`` after standard list bindings.
+Use these hooks to add or override keys and custom commands.
+
+- Instead of the old application-side ``extension/``, shared modules go in ``extensions/`` and personal modules in ``scripts/`` under the selected settings location.
+  The current search order is core / standard library, ``extensions/``, then ``scripts/``.
+  Placing a module there does not enable it; explicitly import it and call its initialization function from ``custom.py``.
+- All examples in the bundled ``settings/_custom.py`` are disabled.
+  Alt+Space for temporarily toggling completion and NetDrive, present in the old default configuration, are now optional extension examples.
+- reload reapplies standard settings and JSON and reevaluates ``custom.py``.
+  Python sources explicitly imported from ``custom.py`` under the selected settings location's ``scripts/`` and application-side ``extensions/``, including dependencies within those roots, are also reevaluated in fresh namespaces.
+  Placement alone does not load modules. Standard-library, core, out-of-scope modules, and C extensions are not reloaded; restart after changing their code.
+  Modules dynamically loaded through importlib after configuration evaluation are also outside this scope. Old references outside the reload scope and unreleased resources are not updated automatically; restart if unregistered resources cannot be recovered. See the `Python extension guide <./extensions.html>`_ for cleanup registration and failure boundaries.
+  It does not reread ``reclnch.ini`` from disk. Exit before editing the INI directly, then restart.
+
+Display and help
+================
+
+- Themes, fonts, width, topmost behavior, the clock, and saving the window position already exist in CraftLaunch.
+  The initial font size changes from 12 to 16; the current default theme is ``gray``.
+- Old themes use ``theme/<name>/theme.ini`` and image skins.
+  Current color settings use ``themes/<name>.ini`` without the old image skins.
+  Lists and settings screens fit text width and the screen work area, wrapping long items and scrolling when needed.
+- Local help on F1 already exists. The old main-window binding comes from the default ``config.py``.
+  It is now a core default binding and opens ``docs/ja/index.html`` or ``docs/en/index.html`` for the active UI language.
+  Missing help or a launch failure produces guidance.
+- The log console, range / word selection, and copying with the mouse already exist.
+  The current version adds a default Ctrl+F10 binding, Ctrl+A to select all logs, Ctrl+C to copy, and triple-click selection / copying of all logs.
+  Copying uses the original text even when lines wrap to the window width. Explicitly closing the console returns to the main window.
+
+Removed features
+================
+
+- **Integer conversion and calculation**: The built-in decimal / hexadecimal conversion and expression calculator are removed.
+- **Built-in music player**: Playback, stop, playlists, and their default Ctrl+Period / Ctrl+Shift+Period bindings are removed.
+  Open music files with an external application.
+- **Migemo search**: Searching Japanese text through romanized input with Migemo is removed.
+  Prefix, partial, and fuzzy matching in general lists such as history already exist in the old version.
+  Ctrl+F in the current JSON command list is a separate substring filter.
+- **Old INI command management**: Loading ``COMMANDLIST``, the ``Command`` command, and manual list reordering are removed.
+- **Image decoration**: Old theme-image rendering is removed, and Pillow is no longer bundled.
+  Color themes, application icons, and help images remain.
+
+Transferring settings and compatibility
+=======================================
+
+Locations and files
+-------------------
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 40
+
+   * - Item
+     - CraftLaunch 3.40
+     - ReCraftLaunch
+   * - Default location
+     - ``%APPDATA%/CraftLaunch``; uses the executable's folder if ``config.py`` exists beside the executable.
+     - ``settings/`` beside the executable; config can select ``%APPDATA%/ReCraftLaunch`` instead.
+   * - State and general settings
+     - ``clnch.ini``
+     - ``reclnch.ini`` in the selected settings location.
+   * - GUI command registrations
+     - ``COMMANDLIST`` in ``clnch.ini``.
+     - ``commands.json`` in the selected settings location.
+   * - Custom Python settings
+     - ``config.py``
+     - ``custom.py`` and optional ``scripts/`` in the selected settings location.
+   * - Location selection
+     - Determined by the presence of ``config.py`` beside the executable.
+     - Saved in ``reclnch_exe.ini`` beside the executable; takes effect on restart, regardless of whether ``custom.py`` exists.
+
+ReCraftLaunch does not automatically read CraftLaunch's settings location, ``config.py``, or ``clnch.ini``,
+or convert old commands to JSON. Changing the settings location does not move or copy files automatically.
+Place the files you want to use in the selected destination yourself.
+Instead of simply renaming the old INI, reconfigure general settings in config and transfer the registrations and custom behavior you need.
+
+- Recreate old GUI registrations in JSON after checking names, targets, arguments, and working directories.
+  Review Ctrl / Shift fallback behavior and fixed arguments without ``%param%`` in particular.
+- Renaming an old ``config.py`` does not provide full compatibility.
+  Transfer the custom behavior you need to ``custom.py`` and review standard-key overrides, old file names / paths, and extension search locations.
+  The old compatibility names ``command_ShellExecute`` / ``command_URL`` are absent; use ``ShellExecuteCommand`` / ``UrlCommand``.
+  Code depending on removed calculation, music, Migemo, or image-decoration APIs cannot be used unchanged.
+  Different Python and native-extension versions also require individual checks for external modules.
+- External integration through ``--execute``, ``--text``, ``--selection``, and ``--position`` already exists in CraftLaunch.
+  Change the executable to ``reclnch.exe`` and use command names registered in the new application.
+  ``--position`` accepts only two finite numeric values, without evaluating expressions.
+
+The comparison uses the `CraftLaunch source <https://github.com/crftwr/clnch/tree/0559f1ee1b066c8c0ec4878271a5294a00573900>`_ whose version definition is 3.40,
+and its `bundled manual <https://github.com/crftwr/clnch/blob/0559f1ee1b066c8c0ec4878271a5294a00573900/doc/index.txt>`_.
+It does not guarantee compatibility with arbitrary old personal configurations or external extensions.
+See `Licenses <./licenses.html>`_ for copyright and licensing, and the `CraftLaunch changelog (Japanese) <./changes.html>`_ for old release notes.

@@ -1,0 +1,4 @@
+<div class="rst-content">
+%(docinfo)s
+%(body)s
+</div>

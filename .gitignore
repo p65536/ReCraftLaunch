@@ -1,0 +1,27 @@
+# Build and documentation output
+/build/
+/dist/
+/docs/html/
+/docs/obj/
+/pyauto/doc/html/
+
+# Local dependencies
+/Python315/
+/third_party/doxygen/bin/
+/third_party/doxygen/*.zip
+
+# Editor and Python cache
+/.vscode/
+.vs/
+*.vcxproj.user
+*.aps
+__pycache__/
+*.pyc
+
+# Personal settings
+/custom.py
+/commands.json
+/clnch.ini
+/reclnch.ini
+/reclnch_exe.ini
+/settings/

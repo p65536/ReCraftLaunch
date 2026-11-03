@@ -1,0 +1,3 @@
+# Audit suppression hygiene without changing the existing rule selection.
+[lint]
+extend-select = ["RUF100", "PGH004"]

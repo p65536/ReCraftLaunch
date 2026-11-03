@@ -1,0 +1,66 @@
+{
+  "": {
+    "target": {
+      "link": "np",
+      "args": "",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "np": {
+    "target": {
+      "link": "notepad.exe",
+      "args": "",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "ep": {
+    "target": {
+      "link": "explorer.exe",
+      "args": "",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "doc": {
+    "target": {
+      "link": "explorer.exe",
+      "args": "shell:Personal",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "dl": {
+    "target": {
+      "link": "explorer.exe",
+      "args": "shell:Downloads",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "set": {
+    "target": {
+      "link": "ms-settings:",
+      "args": "",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "disp": {
+    "target": {
+      "link": "ms-settings:display",
+      "args": "",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  },
+  "snd": {
+    "target": {
+      "link": "ms-settings:sound",
+      "args": "",
+      "workdir": "",
+      "view_mode": "normal"
+    }
+  }
+}

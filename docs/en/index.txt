@@ -1,0 +1,873 @@
+.. role:: kbd(literal)
+
+================================================================================
+ReCraftLaunch - Keyboard Launcher
+================================================================================
+
+:Version: {{APP_VERSION}}
+:Requirements: Windows x64, bundled Python 3.15, Microsoft Visual C++ v14 Redistributable (x64)
+:Based on: CraftLaunch 3.40, ckit, pyauto
+:License: MIT (see `Licenses <./licenses.html>`_ for ReCraftLaunch and bundled components)
+
+.. contents:: Table of Contents
+   :depth: 2
+
+Overview and UI Layout
+================================================================================
+
+ReCraftLaunch is a Windows keyboard launcher based on CraftLaunch 3.40.
+Enter a command name, executable, URL, file, or folder path to launch it quickly using only the keyboard.
+
+- **Keyboard-Centric Fast Operation**: Access files, folders, and websites with minimal keystrokes.
+- **4 Modifier Launch Actions**: Assign up to 4 different actions per command using :kbd:`Enter`, :kbd:`Ctrl+Enter`, :kbd:`Shift+Enter`, and :kbd:`Ctrl+Shift+Enter`.
+- **Flexible Integration**: Supports argument passing, external application forwarding, web search, and copying target paths.
+- **High Extensibility**: Customize behavior via the graphical config menu, manage commands in JSON, and script advanced custom behavior in Python (custom.py).
+
+Settings and registered commands shown in the screenshots are examples.
+The instructions use labels from the English UI.
+
+.. figure:: images/launcher_main.png
+   :alt: Main input field of ReCraftLaunch
+
+   The main input field. It stays compact on your desktop and can be activated at any time via hotkey.
+
+This manual explains first use, registration, settings, and extensions. Use the `Operation Reference <./commands.html>`_ to look up shortcuts, `commands.json Format <./command_json.html>`_ for direct JSON editing, and `Differences from CraftLaunch <./differences.html>`_ when migrating.
+
+Basic Window Components
+--------------------------------------------------------------------------------
+
+ReCraftLaunch consists of the following primary windows:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Window
+     - Primary Function & How to Open
+   * - Main Input Field
+     - The main window where you enter commands, paths, or URLs. Activated via hotkey.
+   * - Command List
+     - Displays, searches, and manages registered commands. Press :kbd:`Ctrl+E` with an empty main input field.
+   * - Command Editor
+     - Edits command names, target links, and modifier actions. Opened by running ``new`` or selecting an item in the list.
+   * - config Menu
+     - Configures input behavior, appearance, modifier fallback actions, and more. Enter ``config`` in the main input field and press Enter, or press :kbd:`Ctrl+S`.
+   * - Console
+     - Displays execution logs, status messages, and error details. Toggled with :kbd:`Ctrl+F10`.
+
+Quick Start
+================================================================================
+
+Startup and Placement
+--------------------------------------------------------------------------------
+
+Extract the distribution package (ZIP) to a folder writable by your Windows user and run ``reclnch.exe``.
+Locations such as ``C:\Program Files``, where ordinary users cannot write, are not recommended.
+The main input field appears on your desktop.
+
+Python 3.15 is bundled; no separate Python installation is needed. Install the latest Microsoft Visual C++ v14 Redistributable (x64) if needed. VC runtime DLLs are not included.
+
+Exit any other copy of ReCraftLaunch before starting this one. CraftLaunch can run independently alongside it; assign different hotkeys when using both.
+
+.. admonition:: Tip: Automatic Creation of Settings Files
+   :class: tip
+
+   At first startup, ReCraftLaunch creates ``reclnch_exe.ini`` beside ``reclnch.exe`` if missing. By default, it also prepares ``settings/scripts/`` and saves ordinary settings to ``settings/reclnch.ini`` inside the application folder.
+   Write permission is required to create and save these files. There is no automatic switch to AppData when writing fails.
+
+If the ordinary settings file cannot be read, ReCraftLaunch starts with defaults and stops saving settings and history to protect the original file.
+Check the path shown in the console, quit ReCraftLaunch, repair the file or its read access, and restart.
+Setting changes and history are not saved while saving is disabled. Reload does not reread the ordinary settings file. JSON command registration can still be saved independently.
+
+Step 1: Open Paths and URLs Directly
+--------------------------------------------------------------------------------
+
+Even without registering commands, you can open file paths, folders, or URLs directly:
+
+1. Click the main input field or press your hotkey to activate it.
+2. Enter a file or folder path, or a URL. For example::
+
+       C:\Documents\memo.txt
+       C:\Documents
+       https://www.google.com/
+
+3. Press :kbd:`Enter`. Files open in their associated applications, folders open in Explorer, and URLs open in your default browser.
+   Programs accessible through PATH (such as ``notepad.exe``) can also be launched by name alone.
+
+You can paste a quoted path such as ``"C:\Program Files"`` from Explorer's "Copy as path" and press :kbd:`Enter` to open it.
+Only one pair of double quotes enclosing the entire path is removed; history keeps the original input.
+To pass arguments, append ``;`` and Windows-style arguments, for example ``"C:\Tools\app.exe";"a b.txt" ""``. Everything after the first ``;`` is passed unchanged.
+
+Enter a file or folder path and press :kbd:`Ctrl+\\` (106-key layout) or :kbd:`Ctrl+/` (101-key layout) to open its context menu. One pair of double quotes enclosing the whole path is also accepted. Text after the first ``;`` is excluded from the target path.
+If the target does not exist, or input is empty or only a registered name, nothing runs and input, selection, and history are preserved.
+For a missing drive, ``Y:``, ``Y:\``, and ``Y:\something`` also retain input on :kbd:`Enter`, without execution or history changes. ``C:`` opens the root when that drive exists.
+
+Direct URL launching from the normal main input accepts only strings beginning with ``http:`` or ``https:`` (case-insensitive).
+This differs from the broader URIs allowed in a JSON Link. Alt+Enter web search is a separate action that inserts the entire input into a configured URL template.
+
+Step 2: Register Frequently Used Targets
+--------------------------------------------------------------------------------
+
+You can register frequently used applications and folders under short command names.
+Register Notepad as ``np``. After registration, you can launch it with just the two characters ``np`` instead of typing ``notepad``:
+
+1. Enter ``new`` in the main input field and press :kbd:`Enter`. The Command Editor opens.
+2. Enter ``np`` in **Name** and ``notepad.exe`` in **Link**.
+3. Leave Args and WorkDir empty, ViewMode set to "Normal", and Modifier set to "None".
+4. Press :kbd:`Enter` to save and return to the main input field (press :kbd:`Esc` to cancel).
+
+.. figure:: images/command_edit.png
+   :alt: Command Editor
+
+   Command Editor. Name is the command name; Link is the target file, folder, or URL.
+
+.. admonition:: Tip: Quick Registration by Drag and Drop
+   :class: tip
+
+   Drag and drop an executable, folder, shortcut (.lnk), or internet shortcut (.url) directly onto the main input field to open the Command Editor with Link automatically populated. If Name is empty, it is also filled from the first filename (without its extension) or folder name, removing semicolons and all whitespace characters. Dots in folder names are kept.
+
+Step 3: Run a Registered Command
+--------------------------------------------------------------------------------
+
+1. Enter the registered name ``np`` in the main input field.
+2. Press :kbd:`Enter` to launch Notepad.
+
+Name lookup ignores leading and trailing whitespace in the name before the first ``;``. ``np `` uses the same registration as ``np``, and registered commands take priority over OS executables of the same name. History keeps the original input; whitespace around the argument text is passed unchanged.
+
+To pass dynamic arguments, append a semicolon (``;``) after the command name::
+
+    np;C:\Documents\memo.txt
+
+Managing and Editing Commands
+================================================================================
+
+Edit, Duplicate, and Delete Registrations
+--------------------------------------------------------------------------------
+
+Manage your registered commands from the Command List:
+
+1. Press :kbd:`Ctrl+E` while the main input field is empty (pressing :kbd:`Ctrl+E` with text entered opens the editor for that command directly).
+2. The Command List opens. Use the arrow keys to navigate.
+
+.. figure:: images/command_list.png
+   :alt: Command List opened with Ctrl+E
+
+   The Command List. Registered commands are listed in alphabetical order.
+
+Press :kbd:`Enter` to edit a selected registration, :kbd:`Ctrl+Insert` to duplicate it, or :kbd:`Delete` to delete it. For all shortcuts, see `Operation Reference: Command List <./commands.html#command-list>`_.
+
+The list width adjusts automatically to fit command names, up to the maximum width set in Appearance options and the screen work area. Names that do not fit wrap onto additional lines. Width setting changes apply the next time you open the list.
+
+Ctrl+Insert duplicates the selected registration, preserving every modifier's Link, Args, WorkDir, and ViewMode.
+Names use ``<base>_copy_N``, choosing the smallest unused positive integer. An empty base uses ``unnamed_copy_N``.
+Strip a trailing ``_copy_<positive integer>`` before choosing the suffix. Duplicating ``7z_copy_1`` produces ``7z_copy_2``, or ``7z_copy_3`` if needed.
+Values always come from the selected registration. Duplication saves without confirmation and selects the new item.
+An unregistered row cannot be duplicated. Save failure preserves the original file and selection and reports the error.
+
+For a longer list, press :kbd:`Ctrl+F` to filter command names by a substring.
+
+During search, the title shows ``Search : query_`` and only command names containing the query are displayed, ignoring case and keeping their original order. Characters accumulate without a timeout; symbols are literal characters. :kbd:`Backspace` removes the last character. An empty query shows all rows, including the Empty Command; a nonempty query hides the Empty Command. You can keep typing or deleting when there are no matches.
+
+Up / Down, :kbd:`PageUp` / :kbd:`PageDown`, and :kbd:`Home` / :kbd:`End` move only through visible matches. During search, :kbd:`Enter` / :kbd:`Esc` only ends search, restoring all rows, the normal title, and single-character cycling while keeping the selected command. With no matches, the last valid selection (or the selection before search) is restored. Press :kbd:`Enter` again to edit. Editing, creating, duplicating, deleting, and dropping files are disabled during search.
+
+Editor Fields and Key Operations
+--------------------------------------------------------------------------------
+
+The Command Editor allows configuring detailed launch options and modifier actions:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 80
+
+   * - Field
+     - Description
+   * - **Name**
+     - The command name entered in the main input field (case-insensitive). Semicolons (``;``) separate arguments and cannot be used in names. Whitespace (spaces, tabs, line breaks, full-width spaces, etc.) is forbidden anywhere, including at either end. Saving reports an error and keeps the input instead of trimming whitespace.
+   * - **Link**
+     - Target program, folder, file, URL, or another registered command name. Required when registering a launch action.
+   * - **Args**
+     - Optional fixed command-line arguments passed to the target.
+   * - **WorkDir**
+     - Optional working directory. An explicit or inherited value takes priority. Otherwise, if Link is an existing file after environment-variable and runtime-macro expansion, its parent is used; other targets leave the directory unspecified.
+   * - **ViewMode**
+     - Initial window state: "Normal", "Minimized", or "Maximized".
+   * - **Modifier**
+     - Selected modifier action: "None" (Enter), "Ctrl", "Shift", or "Ctrl+Shift".
+
+.. figure:: images/command_edit_modifier.png
+   :alt: Editing the Ctrl+Enter action
+
+   Modifier action editing. Each modifier can have its own Link, Args, WorkDir, and ViewMode.
+
+Move between fields with :kbd:`Tab` / :kbd:`Shift+Tab`, save with :kbd:`Enter`, and cancel with :kbd:`Esc`. Choice controls and access keys are listed in `Operation Reference: Command editor <./commands.html#command-editor>`_.
+
+New commands start with empty Link / Args / WorkDir fields and Normal ViewMode for all modifiers. Name is shared; each modifier keeps its own launch settings.
+
+Use absolute paths for files and folders in Link. Executable names such as ``notepad.exe``, registered command names, URLs, and environment-variable expressions that expand to absolute paths are also supported. Relative paths such as ``tools\tool.exe``, ``.\tool.exe``, ``..\folder``, ``\folder``, and ``C:folder`` are not allowed, even with WorkDir specified.
+If saving shows a relative-Link warning, correct the input and save again. Links starting with ``%param%`` depend on runtime arguments and are checked after expansion at execution.
+
+Empty modifier actions are omitted. Link is required even when only arguments, a working directory, or a display mode is desired.
+Named commands can be saved with zero launch actions. JSON registrations take priority over built-in commands of the same name; an empty registration does nothing when entered by name or referenced by an alias.
+New registrations and renames cannot duplicate an existing name. To change an existing registration, edit it from the list.
+
+Using the Empty Command
+--------------------------------------------------------------------------------
+
+You can register an action for pressing :kbd:`Enter` when nothing is typed in the main input field:
+
+- The top entry in the Command List displays ``(Empty Command)`` (or ``(空欄コマンド)`` in Japanese).
+- Even before registration, this row exists at the top; select it and press :kbd:`Enter` to configure its Link.
+- In the editor, the Name field is disabled and safely preserved as an empty string.
+- To prevent accidental deletion, pressing :kbd:`Delete` on this row in the Command List is disabled.
+
+Editing starts at Link; Tab skips the disabled Name field. At least one modifier must have a Link.
+This validation applies to GUI saving. Direct editing of commands.json also allows ``{"": {}}``.
+
+The empty command can also be duplicated with :kbd:`Ctrl+Insert`. The duplicate is a normal command that can be renamed or deleted.
+
+.. admonition:: Tip: Combining Modifiers with the Empty Command
+   :class: tip
+
+   You can assign different actions to the empty command for each modifier key.
+   For example, with nothing typed in the main input field:
+
+   - Press :kbd:`Enter` -> Launch your default web browser
+   - Press :kbd:`Ctrl+Enter` -> Launch your text editor
+   - Press :kbd:`Shift+Enter` -> Open your working folder in Explorer
+   - Press :kbd:`Ctrl+Shift+Enter` -> Open terminal
+
+   This allows launching up to 4 daily tools instantly with a single key combination (see "Modifier Key Actions" below for details).
+
+Registering by Drag and Drop
+--------------------------------------------------------------------------------
+
+- Dropping onto main or the list opens a new command under None, without overwriting an existing list item.
+- None receives only the dropped target information. Ctrl, Shift, and Ctrl+Shift start empty. If Name is empty, it is filled from the first filename (without its extension) or folder name, removing semicolons and all whitespace characters, including Unicode whitespace. An existing Name is left unchanged. For a single ordinary file, WorkDir is set to its parent directory; for a folder, it is set to that folder itself. For example, dropping ``C:\Work\my.folder`` suggests ``my.folder`` as Name and ``C:\Work\my.folder`` as WorkDir. The dedicated .lnk/.url information described below takes priority.
+- In the editor, a drop fills Name, Link, Args, or WorkDir according to its destination; outside input fields it fills Link.
+- Drops apply to the currently selected Modifier. Dropping into an already open editor does not suggest a Name; dropping an ordinary file or folder onto Link does not automatically fill WorkDir.
+- Multiple paths are joined into one string using Windows quoting rules in every field. This does not necessarily form a valid single Link or WorkDir.
+- A single .lnk dropped onto Link imports target, arguments, working directory, and window state. A .url imports its URL. Other fields receive the original path.
+- A drop does not save. Enter saves; Esc cancels.
+
+Everyday Conveniences (Use Cases & Reference)
+================================================================================
+
+Pass Dynamic Arguments (Windows Format)
+--------------------------------------------------------------------------------
+
+Append a ``;`` after the command name to pass arguments dynamically:
+
+- **Single argument**: ``np;C:\work\report.txt``
+- **Multiple arguments**: ``tool;arg1 arg2 arg3``
+- **Arguments containing spaces**: ``tool;"argument 1" argument2``
+- **Empty argument**: ``tool;"a b.txt" "" /flag``
+
+Only the first ``;`` separates the command name from the entire argument string. Later semicolons are ordinary argument characters.
+For example, ``tool;one;two`` passes ``one;two``, and ``tool;"one;two" three`` passes ``"one;two" three``.
+Everything after the first ``;`` reaches ShellExecute unchanged, including spaces, quotes and backslashes. The target interprets quotes; ReCraftLaunch does not add/remove quotes or reformat arguments.
+Direct URL input is an exception: the entire URL, including semicolons, is opened.
+Args is one Windows-format string. For both direct targets and aliases, ``%param%`` inserts the input at that position; without it, input is appended after fixed Args with one separating space. No extra space is added when input is absent.
+Across multiple aliases, target fixed Args precede caller fixed Args and then input, preserving each string's internal spelling.
+
+Run as Administrator (_ra)
+--------------------------------------------------------------------------------
+
+``_ra`` launches the specified program with administrator privileges. The name ``ra`` comes from Windows ``RunAs``, and the leading ``_`` marks an internal command.
+Enter ``_ra;target argument1 argument2`` in the main input field and press :kbd:`Enter`. The target can be a registered command name, an executable path or name, or an absolute document path. Arguments are optional.::
+
+    _ra;np
+    _ra;np C:\work\report.txt
+    _ra;C:\Windows\System32\cmd.exe
+    _ra;"C:\Program Files\Tool\tool.exe" "a b.txt" "" /flag
+    _ra;Z:\temp\test.txt
+    _ra;"Z:\temp\some file.txt"
+
+Quote a target containing spaces. ``_ra`` reads only the first target token and preserves the remaining Windows argument text. Do not separate the target and its arguments with another semicolon.
+Here, ``np`` is the Notepad command registered in Quick Start. For a registered command, the normal action (Modifier: None) is followed to its target, and input arguments are appended to its registered arguments.
+For repeated use, register a new command with ``_ra`` in Link and a target such as ``np`` in Args.
+For a document, you can likewise register Link as ``_ra`` and Args as ``Z:\temp\test.txt``.
+
+For an existing ordinary document, the current user's default association is used. Its launch command selects a regular Win32 EXE, and elevation is requested for that EXE with the fixed arguments, document position, and quoting preserved.
+Supported document placeholders are ``%1``, ``%l``, and ``%L``. Additional argument text is inserted unchanged at a standalone ``%*``, or appended if ``%*`` is absent.
+Environment variables in the launch command are supported. Existing launch behavior for executables, scripts, shortcuts, and installers is retained.
+
+The following associations stop with an explanation. They never fall back to a non-elevated launch.
+
+- Missing associations, regular EXEs, or document placeholders.
+- DDE, DelegateExecute, DropTarget, or activation with an AppUserModelID.
+- Commands mediated by Explorer, rundll32, or command shells; unknown placeholders such as ``%2`` or ``%V``; malformed quotes.
+
+An application's own single-instance behavior may forward the document from the elevated EXE to an existing non-elevated process. Shell launch success alone cannot guarantee elevation of the process that actually opens the document.
+In that case, use ``_ra`` with a registered EXE command containing the application's independent-instance option, or select a Win32 app supporting direct elevated launch. Packaged-app activation is not automatically replaced.
+
+- Depending on your Windows settings, a User Account Control (UAC) prompt appears. Check the target before approving, and enter administrator credentials if requested. Canceling prevents the launch without displaying an error notification.
+- Use this only for programs that need administrator privileges. Documents are limited to the forms above. URLs and folders still require the target to support Windows' Run as administrator action.
+- This does not change the privileges of ReCraftLaunch itself or of built-in commands or custom Python code.
+- Running ``_ra`` without a target does nothing.
+
+Modifier Key Actions (Enter / Ctrl / Shift)
+--------------------------------------------------------------------------------
+
+Launch targets can differ based on which modifier key is held:
+
+- :kbd:`Enter`: Normal launch (Modifier: None)
+- :kbd:`Ctrl+Enter`: Ctrl launch (Modifier: Ctrl)
+- :kbd:`Shift+Enter`: Shift launch (Modifier: Shift)
+- :kbd:`Ctrl+Shift+Enter`: Ctrl+Shift launch (Modifier: Ctrl+Shift)
+
+If a command does not have a specific modifier action registered, the default action configured in config > Modifier default actions is applied (by default, :kbd:`Shift+Enter` opens the containing folder).
+
+Normal external launches rely on the target application taking focus naturally; the launcher does not explicitly deactivate its main window. A launch failure ends input and reports an error in the console. Unrecognized input, such as an unregistered name, remains editable. Operations in internal screens such as config, the editor, and command lists continue as usual.
+
+Alt+Enter Actions (Application, Web Search, Properties)
+--------------------------------------------------------------------------------
+
+Assign independent actions for arbitrary text in the main input field to :kbd:`Alt+Enter`, :kbd:`Ctrl+Alt+Enter`, :kbd:`Shift+Alt+Enter`, and :kbd:`Ctrl+Shift+Alt+Enter`. All four default to Disabled.
+This is separate from registered command Modifiers (Enter / Ctrl+Enter / Shift+Enter / Ctrl+Shift+Enter); no Alt action is added to registered commands.
+
+- **Forward to application**: Pass the input text to an external tool (such as EBWin4 or a text editor).
+- **Forward to web search**: Send the input text directly to a search engine (like Google) in your default browser.
+- **Show properties**: Plain Alt+Enter alone can open the Windows file or folder properties dialog for the entered path.
+
+See "Alt+Enter Action" below for configuration details.
+
+Copy Target Path (F12)
+--------------------------------------------------------------------------------
+
+Type a registered command name and press :kbd:`F12` to copy the Link string registered for its normal action. If Link refers to another registered name, the alias chain is followed to its terminal Link string.
+For example, if the Link of ``np`` is ``notepad.exe``, the copied text is ``notepad.exe``. This does not search the OS for an executable, expand environment variables, convert to an absolute path, or check existence.
+Input ends and the main window is deactivated whether copying succeeds, no target is found, or copying fails. The input text is never added to history.
+
+Configuration (config Guide)
+================================================================================
+
+Opening the config Menu
+--------------------------------------------------------------------------------
+
+Enter ``config`` in the main input field and press :kbd:`Enter` to open the configuration menu.
+You can also press :kbd:`Ctrl+S` in the main input field to open it while preserving input text and history.
+Key bindings overridden in ``custom.py`` take priority.
+
+.. figure:: images/config_menu.png
+   :alt: Configuration menu
+
+   Top-level config menu. Settings are organized by category.
+
+By default, the theme is ``gray`` and the font is MS Gothic at size 16. The hotkey is initially unassigned; choose "Hotkey options" > "Assign hotkey" to set your preferred key combination.
+The default hotkey behavior is "Toggle", so the same key combination activates or deactivates the launcher.
+In the assignment window, press :kbd:`Delete` to clear the key, then :kbd:`Enter` to confirm. Press :kbd:`Esc` to return without changing the assignment.
+The assignment window and settings menu display Ctrl+Shift+A as ``[C]+[S]+A``, for example. Modifiers appear in Ctrl, Shift, Alt, Win order; symbol keys use the representative symbol for the keyboard layout.
+Modifier keys alone cannot be assigned. After dismissing the warning on confirmation, the assignment window keeps your candidate so you can enter a combination that includes a regular key.
+If a key cannot be registered, for example because another app uses it, an error appears and the setting stays unchanged. The previous key is registered again; if restoring it also fails, follow the message and assign a hotkey again. Registration failures at startup are also reported.
+Screenshots show configuration examples and may differ from the defaults.
+
+- Select a menu item, press :kbd:`Enter` to accept, and :kbd:`Esc` to return.
+- Single-value items display their current value directly on the menu.
+- In input dialogs, press :kbd:`Enter` to accept and :kbd:`Esc` to cancel. Use :kbd:`Tab` to switch between multiple fields.
+
+Menu order is Appearance options, Input options, Modifier default actions, Alt+Enter action, Inactive display, Hotkey options, Language, Settings location, and Reload configuration.
+Submenus and actions show their names; single settings show ``name: current value``.
+Applications show the executable filename; URL templates and destination folders show an abbreviated value. Empty values appear as Not set.
+Abbreviation affects only menus; editors preserve the full text. Settings location shows both the current and next-start locations when they differ.
+
+Display Language
+--------------------------------------------------------------------------------
+
+Choose "Japanese" or "English" in config > Language. Changes are saved and a message asks you to restart. Esc cancels the selection.
+The default language is English. Existing language settings are preserved; missing or invalid settings fall back to English. The menu shows both the current and next-start languages when they differ.
+Until restart, the UI and F1 help keep the current language. Reload configuration does not change it.
+The same ZIP includes both languages and their help, so switching requires no new download.
+
+Appearance Options (Saving Window Position)
+--------------------------------------------------------------------------------
+
+Settings related to window placement and appearance.
+
+.. admonition:: Note: Main Window Position Persistence
+   :class: note
+
+   Dragging the main window with the mouse **does not automatically save** its new position.
+   The saved position is restored at the times listed below, such as startup or pressing Esc with empty input.
+
+**To save the current window position:**
+
+1. Drag the main window to your desired position on screen.
+2. Enter ``config`` in the main input field and press :kbd:`Enter`.
+3. Select **Appearance options > Save current window position**.
+4. Confirm with "Yes" to lock the position.
+
+**When the saved position is restored:**
+
+- At application startup.
+- When :kbd:`Esc` deactivates the main window while the input is empty and the console is hidden.
+- When display changes (such as monitor connection or resolution change) are detected.
+
+- After main input started by an external request ends. ``--position`` is temporary and does not change the saved position. Main input does not start while a settings or editor dialog is open.
+
+A normal hotkey activation or switching applications alone does not restore the saved position. If the saved monitor is unavailable, the window returns to the top-left of the first monitor.
+
+Input Options
+--------------------------------------------------------------------------------
+
+Configure history tracking, candidate completion, and keyboard behavior.
+
+.. figure:: images/config_input.png
+   :alt: Keyboard-layout and input-behavior settings
+
+   Input options configuration screen.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 20 55
+
+   * - Setting
+     - Default
+     - Choices & Behavior
+   * - **History**
+     - Keep and save
+     - Do not keep / Keep for this session / Keep and save (available after restart)
+   * - **Completion candidates**
+     - Registered names, files and shares
+     - None / Registered names / Registered names, files and shares
+   * - **Input when inactive**
+     - Clear
+     - Keep / Clear
+   * - **Space action**
+     - Insert a space
+     - Insert a space / Navigate completion candidates
+   * - **Tab action**
+     - Complete common prefix
+     - Clear input / Complete common prefix
+
+Consecutive spaces are always preserved, including leading and trailing spaces, in arguments, URLs, custom input sessions, and history.
+
+By default, history is saved across restarts, but auto-completion is off and no completion candidates appear.
+Candidates are generated according to "Completion candidates" only when auto-completion is on.
+"None" displays no candidates. "Registered names" offers only registered command names, excluding history, files, folders, shares, and other candidates. "Registered names, files and shares" retains standard completion, including history.
+Candidates that differ only in letter case are combined. When history matches a registered command name, the registered spelling takes priority; otherwise, the first candidate's spelling is retained. History, paths, URLs, and arguments are not converted wholesale to lowercase.
+Auto-completion defaults to "Off". This suppresses candidate display and insertion regardless of "Completion candidates", including completion with :kbd:`Tab`, :kbd:`Space` configured for candidate navigation, and the arrow keys.
+With auto-completion on, candidates are inserted automatically; press :kbd:`Tab` to complete the common prefix, or use the arrow keys to select a candidate. Turning auto-completion off during input closes the visible candidate list. Normal text input, command execution, and history recording are unaffected.
+:kbd:`Space` inserts a space. When candidates are visible, :kbd:`Esc` first closes the candidate list; with the list closed, it clears the input.
+On a shared PC, choose "Keep for this session" or "Do not keep" if you do not want history retained after exit.
+Changing history to 'Do not keep' or 'Keep for this session' clears the current history and deletes previously saved history. Deleted history cannot be restored.
+At startup, either of these modes also deletes saved history left by earlier versions.
+"Do not keep" records no new history. "Keep for this session" retains only new history recorded after the change, without saving it; history is empty after restart.
+Switching back to "Keep and save" does not restore deleted history or carry over session history. Reloading with the same history mode preserves the current history.
+
+.. figure:: images/launcher_completion_commands.png
+   :alt: Registered-command completion candidates
+
+   Example with auto-completion on and Completion candidates set to Registered names.
+
+.. figure:: images/launcher_completion_files.png
+   :alt: Filename completion candidates
+
+   File and folder candidates with auto-completion on and Completion candidates set to Registered names, files and shares.
+
+Modifier Default Actions
+--------------------------------------------------------------------------------
+
+Configure the fallback action for Ctrl, Shift, and Ctrl+Shift when a command lacks an explicit action for that modifier.
+
+.. figure:: images/config_modifiers.png
+   :alt: Default actions for each modifier
+
+   Modifier default actions menu. Configurable separately for Ctrl, Shift, and Ctrl+Shift.
+
+Each modifier supports four choices:
+
+1. **Do nothing**: Holding the modifier key does not launch anything.
+2. **Run Enter action**: Runs the target exactly as if Enter was pressed without modifiers.
+3. **Open containing folder**: Opens the folder containing the target file in Explorer (default for :kbd:`Shift+Enter`).
+4. **Folder-root replacement**: Automatically replaces a configured base path before opening.
+
+Containing-folder and folder-root replacement actions resolve aliases and expand environment variables and runtime macros before locating the actual target. If the result is a relative path, no folder opens and the console reports an error with the command name and Link. Bare executable names are searched through PATH/PATHEXT, then Windows App Paths.
+A file uses its parent folder; a directory uses itself. If the target cannot be located, nothing opens. This lookup does not apply to the text copied by F12.
+
+.. figure:: images/config_modifiers_mapping.png
+   :alt: Folder-root replacement settings for Ctrl
+
+   Folder-root replacement settings. Combines a shared source roots list with modifier-specific destination roots.
+
+**How folder-root replacement works:**
+
+Take the folder containing the command's target, replace its matching source root with the destination root, and open the resulting folder.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 35 65
+
+   * - Item
+     - Example
+   * - Source folder
+     - ``D:\dev\project``
+   * - Destination folder
+     - ``D:\doc\project``
+   * - Registered launch target
+     - ``D:\dev\project\src\main.py``
+   * - Folder opened after replacement
+     - ``D:\doc\project\src``
+
+To assign this example to Ctrl+Enter, open config > Modifier default actions, choose Ctrl, set its action to Replace root and open folder, and enter the source and destination above.
+Enter the registered command name and press :kbd:`Ctrl+Enter` to open ``D:\doc\project\src``.
+
+Ctrl and Ctrl+Shift default to Do nothing; Shift defaults to Open containing folder.
+Below Modifier in the command editor, the fallback action is always shown, regardless of Link contents.
+Folder-root replacement also reports missing sources / destination, without displaying their paths there.
+These defaults apply to registered commands, not built-in commands, unregistered program lookup through PATH, or directly entered paths / URLs.
+
+Source folders are shared by all modifiers; the first matching root is used. Each modifier has its own destination.
+
+Enter edits an entry, Add or Insert adds one, Delete removes one, and Ctrl+Up/Down reorders.
+In the entry dialog, Enter applies to the list and Esc cancels. Save and Return commits all list edits; Cancel or Esc discards them.
+Action and destination changes are saved and applied immediately when accepted.
+Use absolute paths. Currently unavailable locations, such as disconnected UNC paths, can be configured.
+No registered source, no matching source, no destination, or a nonexistent result causes no action; there is no fallback to normal execution.
+Missing sources / destination are also indicated below the settings. Incomplete settings can be saved.
+
+The destination remains stored when a different action is selected.
+
+Alt+Enter Action
+--------------------------------------------------------------------------------
+
+In config > Alt+Enter action, first select the key to configure.
+Each row shows its current action. Ctrl is abbreviated as ``[C]`` and Shift as ``[S]``.
+
+.. code-block:: text
+
+   Alt+Enter           : Disabled
+   [C]+Alt+Enter       : Disabled
+   [S]+Alt+Enter       : Disabled
+   [C]+[S]+Alt+Enter   : Disabled
+
+Each key is independent. Disabled or unconfigured keys never fall back to another key's settings.
+Plain Alt+Enter offers the four actions below. The other three keys offer Disabled, Forward to application, and Forward to web search.
+
+.. figure:: images/config_alt_enter_action.png
+   :alt: Choosing which of the four Alt+Enter combinations to configure
+
+   Alt+Enter key selection. Each key defaults to "Disabled".
+
+- **Disabled**: Does nothing (default). Preserves the input text, caret, selection, and focus, and keeps the input session open.
+- **Forward to application**: Passes the input text as an argument to an external executable.
+  For example, to forward to EBWin4, specify its path and arguments ``/G=0 /C=1 /M=p /S=%param%``.
+
+  .. figure:: images/config_alt_enter_application.png
+     :alt: External application settings for EBWin4
+
+     External application example. ``%param%`` is replaced with the input string.
+
+- **Forward to web search**: Encodes the input text and embeds it into a URL template.
+  For example, Google search: ``https://www.google.com/search?q=%param%``.
+
+  .. figure:: images/config_alt_enter_web.png
+     :alt: URL template for Google search
+
+     Web search example. Specify any search engine URL template.
+
+- **Show properties** (plain Alt+Enter only): Opens the Windows properties dialog for an existing path. A nonexistent path produces an error.
+- **Prefer properties for existing paths** (plain Alt+Enter only): When forwarding to an application or web search is selected, this option prioritizes opening properties if the input matches an existing file or folder.
+
+Prefer properties for existing paths defaults to on. When the action is Disabled, even an existing path does nothing.
+Turning this option off forwards existing paths to the configured application or web search.
+The three keys with Ctrl / Shift offer no properties options and always forward existing paths to the configured application or web search.
+
+Specify the executable and arguments separately. Do not quote the executable path. The executable's parent is used as the working directory.
+Do not quote ``%param%`` in the argument template either: Windows argument rules preserve spaces, Japanese text, and quotes.
+Without ``%param%``, the entire input is appended after the configured arguments.
+
+Accepting changes saves and applies them immediately.
+Each key stores its own executable, arguments, and URL. Destination values for that key are retained when switching actions. Cancel does not save changes; a save failure preserves the existing settings. Empty intermediate values can be saved, but missing required settings produce an execution error.
+Empty or whitespace-only input is not processed. Leading / trailing spaces are removed; the remainder is passed as a whole without splitting at semicolons.
+Disabled keeps the input session open. Enabled actions end input as with normal command execution. Focus moves according to the normal behavior of the application, browser, or properties window; the launcher does not explicitly deactivate its main window.
+The input text is never added to history, regardless of the history setting. Existing history is unchanged.
+Properties mode with a nonexistent target, or a launch failure, reports an error in the console.
+
+Inactive display (Clock Display)
+--------------------------------------------------------------------------------
+
+Sets the main input field display when inactive. Choosing "Clock" displays the current date and time.
+
+.. figure:: images/launcher_clock.png
+   :alt: Clock showing month, day, weekday, and time
+
+   Clock display example. The window width adjusts automatically to fit the date and time text.
+
+Maximum width and the work area remain the limits; excess text is clipped on the right.
+Near work-area edges the window is repositioned to fit, without changing its saved position.
+Returning to input restores sizing based on input and minimum / maximum widths. The default format shows month, day, weekday, hour, and minute.
+
+Settings Location
+--------------------------------------------------------------------------------
+
+Selects where settings files (``reclnch.ini``, ``commands.json``, ``custom.py``, etc.) are stored.
+
+.. figure:: images/config_storage.png
+   :alt: Selecting the settings location
+
+   Settings location selection dialog.
+
+- **Application folder (default)**: Stores files in the ``settings/`` directory next to ``reclnch.exe``. Keeps application-related files within the application folder and is suitable for portable use on USB drives.
+- **AppData folder**: Stores files in ``%APPDATA%/ReCraftLaunch/``. Keeps separate settings for each Windows user so multiple users can share the same application files.
+
+The location choice is stored in ``reclnch_exe.ini`` beside ``reclnch.exe`` in both modes. This file does not move to AppData. Creating it initially and changing the location choice require write access to the application folder. Users of the same executable share this choice. The selected settings location must also allow creation and saving of settings and ``scripts/``; an unavailable location does not trigger an automatic fallback.
+
+.. admonition:: Warning: Changing Storage Location and Migrating Files
+   :class: warning
+
+   Restart ReCraftLaunch to apply the new settings location.
+   Existing settings files are not moved or copied automatically; please copy your files manually if needed.
+
+Themes and help remain in the application folder. Theme definitions come from ``<application>/themes/``, while the selected theme name is stored in the chosen ``reclnch.ini``.
+Users of the AppData folder can select separate themes, but editing a shared theme definition affects everyone using it.
+
+Reload Configuration
+--------------------------------------------------------------------------------
+
+Selecting "Reload configuration" immediately reapplies ``commands.json`` and ``custom.py`` without restarting the application.
+Note that direct edits to ``reclnch.ini`` on disk are not reloaded (restart ReCraftLaunch to apply manual INI changes).
+
+If commands.json cannot be read or validated, commands remain executable using the last valid registrations. However, the list and editor read the JSON file from disk again: duplicate names or JSON syntax errors still prevent the list from opening and the editor from saving.
+For startup behavior and recovery steps, see `commands.json Format: Behavior when loading fails <./command_json.html#json-load-errors>`_.
+
+Loading failures in ``custom.py`` differ from failures while applying settings.
+
+- At initial startup, syntax errors, top-level import or execution errors, and invalid hook definitions leave custom settings unapplied. Standard keys, built-in commands and validated JSON remain available. Press :kbd:`Ctrl+F10` to read the console traceback, fix ``custom.py`` or its imported source in the active settings location, then run ``reload``.
+- When reloading a valid configuration, these loading or hook-validation failures preserve the old settings, registrations, selected modules and registered resources.
+- ``configure(window)`` and ``configure_ListWindow(window)`` may be omitted. If defined, each must be callable and accept one window argument. Non-callable values such as ``None`` fail validation during loading.
+- Failures after ``configure()`` starts, or in ``configure_ListWindow()`` when a list opens, do not roll back changes already applied. Import failures inside hooks are also application-stage failures. Fix the source and Reload; close and reopen lists. Restart if, for example, unregistered resources cannot be recovered.
+
+Loading, cleanup or application failures during Reload are reported to the console and suppress its success notification. See `Implementing Python Extensions <extensions.html>`_ for ordinary and dynamic imports, cleanup and the exact guarantees.
+
+JSON editing, duplication, and deletion preserve custom commands without rerunning custom functions.
+
+Advanced Customization (Python Extensions)
+================================================================================
+
+ReCraftLaunch can be extended with Python scripts to add custom commands, alter key bindings, or change UI formatting.
+
+See `Implementing Python Extensions <extensions.html>`_ for complete examples of commands, key bindings, text input, menus, and worker calls, including file locations, execution, cancellation, and applying changes.
+
+3-Tier Extension Structure
+--------------------------------------------------------------------------------
+
+Custom functionality is organized across three layers:
+
+1. **Shared application extensions (extensions/)**:
+   Official samples and shared modules placed in ``extensions/`` in the application folder.
+2. **User custom scripts (scripts/)**:
+   Personal Python modules placed in ``settings/scripts/`` or ``%APPDATA%/ReCraftLaunch/scripts/``.
+3. **Configuration script (custom.py)**:
+   The main script in your settings location. It explicitly imports modules and calls setup functions.
+
+An empty ``scripts/`` directory is created at startup if absent. Module search order is the application and standard library, ``extensions/``, then the active ``scripts/`` directory. Avoid duplicate module names. Placing or importing an official module alone does not enable it: call its initialization function from ``custom.py``.
+
+Using Sample Files
+--------------------------------------------------------------------------------
+
+The application package includes template files in the ``settings/`` folder (or ``samples/`` in development):
+
+- ``settings/_commands.json``: Collection of sample registered commands
+- ``settings/_custom.py``: Template for custom Python configuration
+
+To use a sample, copy it to the active settings location and remove the leading underscore (``_``) from its name. If the destination file already exists, add the required entries instead of overwriting it.
+The following example assumes the application-local ``settings/`` location and that the destination files do not exist. For per-user AppData, use ``%APPDATA%/ReCraftLaunch/`` as the destination instead::
+
+    Copy-Item settings\_commands.json settings\commands.json
+    Copy-Item settings\_custom.py settings\custom.py
+
+``_commands.json`` includes these examples for Windows applications and settings. After copying it, use reload to apply the registrations.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 40 60
+
+   * - Command name
+     - Action
+   * - ``np``
+     - Open Notepad (notepad.exe).
+   * - ``ep``
+     - Open File Explorer.
+   * - ``doc`` / ``dl``
+     - Open the current user's Documents / Downloads folder using Windows folder identifiers, including redirected locations.
+   * - ``set``
+     - Open Windows Settings, a separate application from ReCraftLaunch's config menu.
+   * - ``disp`` / ``snd``
+     - Open Windows Display / Sound settings.
+
+The sample also includes an empty command that refers to ``np`` and opens Notepad when Enter is pressed with no input. These registrations are inactive until the sample is copied to commands.json.
+To try completion, turn auto-completion on in config, set Completion candidates to Registered names or Registered names, files and shares, and type ``d`` to see ``doc``, ``dl``, and ``disp`` as candidates, then use the arrow keys to select one.
+Type ``do`` and press :kbd:`Tab` to complete it to ``doc``.
+
+Enabling Official Samples
+--------------------------------------------------------------------------------
+
+The bundled ``settings/_custom.py`` contains commented-out examples for enabling official extensions.
+Copying the file alone does not change behavior.
+
+To enable a feature, open ``custom.py`` in an editor and **delete only the leading "#" from the 2 lines** for that extension (keep the 4 spaces following "#" for Python indentation).
+
+Keep ``def`` and ``pass`` as written, and enable only the imports and function calls for the extensions you want to use.
+
+For example, to enable the ``stamp`` date/time copy extension:
+
+.. code-block:: python
+
+    def configure(window):
+        # Delete leading '#' to enable
+        import stamp
+        stamp.configure(window)
+
+After editing, select "Reload configuration" in the config menu.
+
+Bundled Official Extensions
+--------------------------------------------------------------------------------
+
+The ``extensions/`` folder includes the following extensions:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 75
+
+   * - Module
+     - Feature Overview
+   * - **stamp.py**
+     - Adds a ``stamp`` command that copies the current date and time (e.g., ``2026-10-18_153000``) to the clipboard. The format is customizable.
+   * - **netdrive.py**
+     - Adds commands to map and unmap network drives (e.g., ``NetDrive;L \\server\share`` to map, ``NetDrive;L`` to unmap).
+   * - **clock.py**
+     - Customizes the inactive clock display format (date, weekday, seconds, etc.).
+   * - **completion_keys.py**
+     - Allows toggling automatic candidate completion temporarily with :kbd:`Alt+Space`.
+   * - **list_keys.py**
+     - Enables moving up/down in the Command List with :kbd:`Ctrl+P` / :kbd:`Ctrl+N` (configured inside ``configure_ListWindow(window)``).
+
+.. admonition:: Note: Modifying Python Module Code
+   :class: note
+
+   "Reload configuration" reevaluates ``custom.py`` and reloads explicitly imported Python sources and their dependencies within the active ``scripts/`` and application ``extensions/`` directories. Modules and resources outside this scope may require a restart. See the Python extension guide (``extensions.html``) for the exact conditions and limitations.
+
+Console and External Control
+================================================================================
+
+Using the Console and Copying Logs
+--------------------------------------------------------------------------------
+
+ReCraftLaunch provides a console window for reviewing status logs, command execution, and errors.
+
+Long log lines wrap to the display width. Scrolling and bottom-position information use displayed lines.
+Resizing preserves the selection and logical reading position; new output follows the end when already viewing it.
+Copying uses original text: it preserves logical newlines and adds no newlines for display wrapping.
+Ctrl+A selects all retained text, including off-screen text, up to 1,000 logical lines. Ctrl+C copies it; Ctrl+A alone does not copy.
+Triple-click selects all retained text and copies it when released. Dragging selects a range, double-clicking selects a word, and releasing copies the selection.
+
+Successful F1 messages are logged without opening a closed console or changing the explicit open state. Missing help and launch failures are reported in the console.
+Ctrl+F10 toggles the console and moves focus there when opening it. Main input is retained.
+
+- Running commands or clearing input with Tab does not close an open console.
+- With Inactive display set to Hide, switching applications hides main and console together. Returning via a hotkey restores both with focus on main.
+- With other inactive modes, both remain displayed when switching applications.
+- Moving between main, console, and their owned settings / editor windows does not clear input. Switching to another app follows the inactive-input setting.
+- Esc, Ctrl+F10, or the console close button explicitly closes it and returns focus to main. Returning to main alone does not reopen it. New log output is a separate automatic-display request.
+- In main, Esc clears nonempty input; with empty input it closes a visible console; otherwise it deactivates main.
+
+Automatic display from new output follows these visibility rules without moving focus. Open state lasts only for the current session.
+The bottom position / key-guide area wraps as needed, is excluded from selection and copying, and does not change selection when clicked.
+The default console size is 80 by 32 cells. Saved dimensions are limited, including borders, to the work area. Size and position are recalculated on DPI or work-area changes.
+
+For all keyboard and mouse operations, see `Operation Reference: Console <./commands.html#console>`_.
+
+Control from External Processes (Command-Line Arguments)
+--------------------------------------------------------------------------------
+
+Send commands to a running ReCraftLaunch instance from batch scripts, command prompts, or external tools.
+The following examples assume the sample ``np`` command is registered::
+
+    reclnch.exe --execute="np;C:\Documents\memo.txt"
+    reclnch.exe --text="np" --selection=1
+    reclnch.exe --position="(20,40)"
+
+- ``--execute="<command>"``: Executes the specified command string (can be specified multiple times).
+- ``--text="<string>"``: Sets the text in the main input field.
+- ``--selection=<position>``: Cursor and selection mode (0: start, 1: select command, 2: command end, 3: argument start, 4: select all arguments, 5: input end, A: select all). The default is 5.
+- ``--position="(X,Y)"``: Temporarily displays the main input field at a percentage position relative to the previously active window.
+
+Multiple ``--execute`` options run in order, followed by ``--text`` / ``--selection`` / ``--position``. An accepted quit request prevents opening the input field.
+
+While a modal screen such as Config, a list, or an editor is open, the built-in ``config`` / ``new`` / ``history`` / ``reload`` / ``quit`` commands return to the existing child without executing. Aliases to these commands behave the same way; they are not deferred. Other commands still run, while input-field changes and positioning are ignored.
+
+The sender waits until request handling returns. If no modal screen is open, executing ``config`` or ``new`` makes the sender and subsequent commands wait until the opened screen closes. Custom commands that open screens or wait for work follow their own behavior.
+
+The argument portion is the text after the first semicolon, including any later semicolons. Mode 3 places the cursor at its start; mode 4 selects the entire argument portion. If there is no semicolon, or the arguments are empty as in ``command;``, both modes produce an empty selection at the input end. For empty text, the start and end are the same position. Text containing a URL follows the same delimiter rule.
+
+Running ``reclnch.exe`` without arguments while ReCraftLaunch is already running follows config > Hotkey options > Hotkey behavior for the existing window. Toggle deactivates it when already active. IPC requests with arguments are processed as before.
+
+Troubleshooting and Maintenance
+================================================================================
+
+Frequently Asked Questions
+--------------------------------------------------------------------------------
+
+**Q. Can I bring up the main window without assigning a hotkey?**
+   Run ``reclnch.exe`` again without arguments to show and activate the main window of the running ReCraftLaunch. No hotkey assignment is required.
+   This follows **config > Hotkey options > Hotkey behavior**. With "Toggle", running it again while the window is already active deactivates it.
+
+**Q. Why does the main window return to its original position after moving it?**
+   ReCraftLaunch does not automatically save window movements. After dragging the window to your desired position, you must select **config > Appearance options > Save current window position**.
+
+**Q. What should I do if an error occurs while saving a command?**
+   If saving fails, the existing configuration file is preserved and the editor stays open for correction and retry. List deletion uses the same saving mechanism.
+   For long error messages, scroll the dialog body using the Up / Down arrow keys, :kbd:`PageUp` / :kbd:`PageDown`, or the mouse wheel. Click the button or press :kbd:`Enter` / :kbd:`Esc` to close, correct the values, and retry.
+
+**Q. Why does pressing F1 not open the help documentation?**
+   Verify that the ``docs/`` folder is located beside ``reclnch.exe``. If missing, restore the ``docs/`` folder from the distribution ZIP package.
+
+Program Update Procedure
+--------------------------------------------------------------------------------
+
+To update ReCraftLaunch to a new version:
+
+1. Exit running ReCraftLaunch (enter ``quit`` in the main input field and press Enter).
+2. Extract the new distribution package (ZIP).
+3. Overwrite the existing installation folder with the extracted files.
+4. Launch ``reclnch.exe``. Your existing ``commands.json``, ``custom.py``, and settings are fully preserved.
+
+Uninstallation
+--------------------------------------------------------------------------------
+
+1. Exit ReCraftLaunch (enter ``quit`` in the main input field and press Enter).
+2. Delete the extracted application folder. This also deletes settings stored in its ``settings/`` folder, so copy any settings you want to keep elsewhere first.
+3. If you used config > Settings location > AppData folder, deleting the application folder leaves settings in ``%APPDATA%\ReCraftLaunch``. Delete that folder too if you no longer need those settings.
+4. Remove any shortcuts or startup entries you created.
+
+Specifications, Licenses, and References
+================================================================================
+
+Reference Documentation
+--------------------------------------------------------------------------------
+
+- **Detailed key operation reference**: See the `Operation Reference <./commands.html>`_.
+- **Manual JSON editing format**: See `commands.json Format <./command_json.html>`_.
+- **Differences from CraftLaunch 3.40**: See `Differences from CraftLaunch <./differences.html>`_.
+- **Original CraftLaunch changelog**: See `CraftLaunch changelog <./changes.html>`_ (Japanese original).
+- **Python extension API reference**: See the `API reference <topics.html>`_.
+
+Product Information and License
+--------------------------------------------------------------------------------
+
+Enter ``about`` in the main input field and press :kbd:`Enter` to print ReCraftLaunch version information, repository links, and original project credits to the console.
+
+.. figure:: images/console_about.png
+   :alt: About information for ReCraftLaunch and its CraftLaunch origin
+
+   About information output. Displays both ReCraftLaunch and CraftLaunch project details.
+
+- **ReCraftLaunch Repository**: `https://github.com/p65536/ReCraftLaunch <https://github.com/p65536/ReCraftLaunch>`_
+- **Latest Releases**: `https://github.com/p65536/ReCraftLaunch/releases <https://github.com/p65536/ReCraftLaunch/releases>`_
+- **CraftLaunch Origin Information**:
+  CraftLaunch was created by craftware.
+
+  - Original source code: `https://github.com/crftwr/clnch <https://github.com/crftwr/clnch>`_
+  - craftware website: `https://sites.google.com/site/craftware/ <https://sites.google.com/site/craftware/>`_
+
+ReCraftLaunch and its components are licensed under the MIT License and other open-source licenses. For complete terms, see `Licenses <./licenses.html>`_ and the ``licenses/`` directory in the distribution package.

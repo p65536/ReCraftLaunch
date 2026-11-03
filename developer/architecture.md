@@ -1,0 +1,429 @@
+# ReCraftLaunchのアーキテクチャ
+
+アプリケーションの構成・設計・実装上の制約を説明します。ビルドと文言編集は[開発手順](development.md)、検証方法は[配布版の確認手順](release-verification.md)を参照してください。
+
+## 構成と実行環境
+
+ReCraftLaunchはCraftLaunch 3.40を基にしたWindows x64向けランチャーです。C++実行ファイルへPython 3.15を埋め込み、Pythonの本体と3つのネイティブ拡張を使います。由来・著作権・ライセンスは維持します。
+
+| 場所 | 責務 |
+|---|---|
+| [clnch/main.cpp](../clnch/main.cpp) | 埋込Pythonの初期化と起動。import失敗を終了コードへ反映 |
+| [clnch_main.py](../clnch/clnch_main.py) | ネイティブ探索、文言供給、既存インスタンスへのIPC、保存先・本体の起動終了 |
+| [clnch_mainwindow.py](../clnch/clnch_mainwindow.py) | 入力、キー、内蔵コマンド、状態管理 |
+| [clnch_inputsession.py](../clnch/clnch_inputsession.py) | 一時入力状態の復元、入力セッションのEditWidget・ハンドラ・結果・予定コマンドの所有 |
+| [clnch_commandline.py](../clnch/clnch_commandline.py) | ランチャー入力の補完・キー実行・受付の仲介と、登録コマンド・URL・ファイルの入力プロトコル |
+| [clnch_statusbar.py](../clnch/clnch_statusbar.py) | ステータス層の優先順位・描画、独自層のコールバックとタイマー |
+| [clnch_configmenu.py](../clnch/clnch_configmenu.py) | 設定メニューの階層表示・遷移・対話操作 |
+| [clnch_standard.py](../clnch/clnch_standard.py) | 標準設定の構成、JSON読込と再構築の接続、キー・編集・一覧への入口 |
+| [clnch_commandregistry.py](../clnch/clnch_commandregistry.py) | 標準・JSONの登録状態、別名連鎖の終端Link解決、所有する項目の再構築 |
+| [clnch_commandexecutor.py](../clnch/clnch_commandexecutor.py) | 実行対象と修飾操作の選択、別名への引数・起動情報の引継ぎ、ShellExecuteCommandへの委譲 |
+| [clnch_commandplatform.py](../clnch/clnch_commandplatform.py) | Windows引数解析、所在・基点置換、PATH/PATHEXT・App Paths検索と入力プロトコル |
+| [clnch_cmdeditor.py](../clnch/clnch_cmdeditor.py)・[clnch_cmdlist.py](../clnch/clnch_cmdlist.py) | 同一プロセス内の編集・一覧GUI |
+| [clnch_cmddraft.py](../clnch/clnch_cmddraft.py) | GUI・ファイル操作に依存しない編集状態、Modifier切替、編集固有の保存前検証と保存候補の生成 |
+| [clnch_cmdstore.py](../clnch/clnch_cmdstore.py) | JSON読込・検証、名前・操作値の正規化、複製データ生成、整列・置換保存 |
+| [clnch_execonfig.py](../clnch/clnch_execonfig.py) | exe隣の保存先指定の読書き |
+| [clnch_inisettings.py](../clnch/clnch_inisettings.py) | 通常INIの静的定義と既存APIへの小さな読書きメソッド |
+| [clnch_inputconfig.py](../clnch/clnch_inputconfig.py) | 入力設定の検証・適用 |
+| [clnch_modifierconfig.py](../clnch/clnch_modifierconfig.py) | 共通の修飾キー既定動作・基点置換 |
+| [clnch_altenterconfig.py](../clnch/clnch_altenterconfig.py) | Alt+Enter設定、引数化・URLエンコード・OS起動 |
+| ckit/・pyauto/・clnch_native/ | テキストGUI、Windows操作、本体用ネイティブ処理 |
+
+Release・配布では本体、ckit、pyautoのバイトコードをlibrary.zipに収録します。clnch/のPythonモジュールはZIPではトップレベルに置き、パッケージ階層へ変更しません。Debugはリポジトリのソースを参照します。通常importによる.pyc生成はPyConfig.write_bytecode=0で初期化時から抑止しますが、既存バイトコードの利用とビルド時の明示コンパイルは維持します。
+
+## 管理者権限での文書起動
+
+`_ra`は従来どおり登録名・別名・実行ファイルを解決し、`shell_verb="runas"`をShellExecuteCommandへ渡す。JobQueue内でマクロ展開と既存のWorkDir導出を終えた後、実在する通常の文書に限りclnch_commandplatform.resolve_elevated_documentで関連付けコマンドを解決する。公開ShellExecuteCommandを直接呼ぶ場合の引数・動作は変更しない。
+
+AssocQueryStringWへ拡張子と既定verb（NULL）を渡す。ASSOCF_NOTRUNCATE・ASSOCF_NOFIXUPS・ASSOCF_INIT_IGNOREUNKNOWNを指定し、NOUSERSETTINGSやFIXED_PROGIDを指定せず、現在のユーザーの既定アプリを尊重する。COMMAND・EXECUTABLEを取得し、DDECOMMAND・DDEIFEXEC・DELEGATEEXECUTE・DROPTARGET・APPIDのある形式は拒否する。DDEAPPLICATION・DDETOPICには通常の静的関連付けでも補完値が返るため、それだけでDDEとは判定しない。
+
+対応範囲は実在する絶対パスの通常Win32 EXEと、文書位置を含む静的コマンド。固定引数の原文を保ち、`%1`・`%l`・`%L`は引用状態に従って文書へ置換、単独の`%*`へ入力原文を挿入する。`%*`がなければ入力原文を末尾へ追加する。挿入済みの文書・引数は再展開しない。未知のプレースホルダー、引用不整合、EXE不一致、Shellブローカー／コマンドシェル経由は理由付きで中止し、通常権限へフォールバックしない。EXE・バッチ・ショートカット・インストーラー、およびPATHEXT登録の形式は従来経路に残す。
+
+ShellExecuteExの成功は、アプリ独自の既存プロセスへの引渡しや、最終的に文書を開くプロセスの昇格を保証しない。アプリの独立起動オプションを持つ明示的なEXE登録、または直接昇格起動に対応するWin32アプリを代替とする。UAC承認と対象アプリ内の実文書・権限は実機で確認する。
+
+pyauto.shellExecuteはSEE_MASK_INVOKEIDLIST・SEE_MASK_FLAG_NO_UIを保ち、SEE_MASK_NOASYNCを加える。メッセージループを持たないワーカーでもShellの起動操作の完了まで待つが、プロセス終了は待たず、ハンドルも公開しない。失敗のGetLastErrorはGIL再取得前に保存し、Windowsエラー1223の無通知終了とその他の通知を維持する。
+
+仕様の根拠: [AssocQueryStringW](https://learn.microsoft.com/en-us/windows/win32/api/shlwapi/nf-shlwapi-assocquerystringw)、[ASSOCF](https://learn.microsoft.com/en-us/windows/win32/shell/assocf_str)、[ASSOCSTR](https://learn.microsoft.com/en-us/windows/win32/api/shlwapi/ne-shlwapi-assocstr)、[SHELLEXECUTEINFO](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ns-shellapi-shellexecuteinfow)。
+
+## 設定と登録の境界
+
+静的INI設定は不変なIniSettingから参照し、通常設定はclnch_inisettings、入力・修飾キー・Alt+Enterは専用モジュールのDEFAULTSとそこから生成するSETTINGSを正本にします。文字列／整数の取得、Configの生文字列照合、保存形式と個別の反映・保存タイミングを維持します。全設定の既定値・型・参照／書込み元と例外は[INI設定定義](ini-settings.md)を参照してください。
+
+標準機能は本体のコア実装、登録データはcommands.json、利用者の独自処理はcustom.pyに分けます。標準実装を利用者設定としてexecせず、標準設定をcustom.pyで二重管理しません。旧INIのCOMMANDLISTは読み込まず、登録・編集・削除をJSONへ統合しています。
+
+### 設定適用と拡張Reload
+
+MainWindow.configureの適用順は次のとおりです。
+
+1. commands.jsonを読込・検証し、INIの入力・修飾キー・Alt+Enter設定を検証し、custom.pyを新しい名前空間へ読み込む。
+2. registerConfigCleanupへ登録した旧資源の終了処理を逆順で呼ぶ。成功後、時計書式を既定値へ戻し、本体のキーマップ・入力設定・内蔵コマンドを構築する。
+3. clnch_standard.configureへ読込済みJSONを渡し、標準実装とJSON登録を適用する。
+4. custom.configure(window)があれば呼び、独自の追加・上書きを適用する。
+
+設定値や独自ファイルの読込・検証に失敗した場合は標準適用を中断して通知します。ただし初回のcustom.py読込・フック検証失敗では、独自設定を適用せず共通の標準構築処理へ進み、標準キー・組込コマンドと検証済みJSONで復旧操作を可能にします。独自関数の途中失敗で、それまでの変更を自動ロールバックはしません。独自処理は繰返し呼ばれても重複登録しないように記述します。configure_ListWindowは一覧の標準キー割当後に呼びます。
+
+Reload時のJSON読込・検証失敗は、資源終了・登録置換より前に中止し、旧登録・キーマップ・独自資源を保持します。検証済みの読込結果を標準適用へ渡し、適用時にファイルを読み直しません。ファイル欠損だけを空登録として扱い、アクセス拒否等のI/Oエラーは読込失敗として通知します。初回起動だけは通知後、JSONなしで標準・独自設定を適用し、修正後のReloadを可能にします。読込・終了・標準/独自適用のいずれかで失敗したReloadは成功を通知しません。configureの戻り値Noneと例外を通知して継続する契約は維持します。設定メニューもcommand_Reloadを呼び、同じ成否判定と1回の成功通知を使います。
+
+Python拡張はアプリ共通のextensions/、選択した設定保存先のscripts/、明示的な読み込み・設定の入口custom.pyの3層です。起動時にscripts/を未作成なら空で作成し、既存内容は保持します。clnch_mainは既存の本体・標準ライブラリのsys.pathを維持し、extensions/、scripts/の順で重複せず末尾へ追加します。同名モジュールは避ける運用とし、独自の名前解決はしません。
+
+自動検出・自動実行はせず、custom.pyから通常のimportと関数呼び出しで適用します。共用・個人用にAPIの差はなく、関数の呼出順が適用順です。configure_ListWindowも既存のフックを使います。公式サンプルstamp・netdrive・clock・completion_keys・list_keysはimportだけでは適用せず、configure(window)で適用します。サンプル使用例はsamples/_custom.py（配布settings/_custom.py）にすべてコメント状態で残します。
+
+Reloadは標準機能・JSON・独自定義を再適用し、custom.pyから明示importされた選択中のscripts/・extensions/のPythonソースと依存先を新しいモジュールとして読みます。clnch_configmodulesが設定世代ごとのimportを追跡し、旧世代の対象キャッシュだけを外します。PathFinderの検索順を維持し、通常のimportで依存・循環を処理します。SourceFileLoaderのソース直接コンパイルで同時刻・同サイズのpycキャッシュを避け、削除した定義・from-importも置き換えます。標準ライブラリ・本体・選択外・C拡張は再読込せず、自動検出・監視はしません。custom.pyと対象ソースがimportするimportlibには世代専用のモジュールビューを返し、import_moduleだけを同じロック・対象キャッシュ退避・ローダーへ接続します。共有importlibとそのimport_moduleは差し替えません。トップレベル、configure、configure_ListWindowと、それらから呼ぶ対象ソース内のimportlib.import_module（from-importした関数・相対名も含む）を追跡します。ビューは共有importlibとは別オブジェクトで、他の属性はimport時に共有モジュールから取得します。対象外のライブラリから渡された元のimport_module、sys.modulesから直接取得したimportlib、独自ローダーによる読込や任意のバックグラウンド／フック終了後の遅延import全般は保証対象にしません。ディスクINIは再読込せず、直接編集は終了後に行い再起動します。
+
+configure・configure_ListWindowは定義されている場合だけcallableを検証し、旧資源の終了前に不正値を拒否します。トップレベルの構文・読込・検証失敗は旧customと対象sys.modulesを復元し、旧登録と資源を保持します。独自読込・フック・登録済み終了処理のSystemExit・KeyboardInterruptも通知して継続します。内部設定の検証や標準適用の捕捉範囲は広げません。フック内のimport失敗は適用途中の失敗です。終了処理は引数なし・戻り値未使用でUIスレッドから実行し、失敗後も残りを試み、成功分を除去して失敗分だけ再試行します。終了失敗時は対象モジュールを再試行用に復元し、新しい独自設定は適用しません。旧独自登録と一覧フックを外して標準機能と検証済みJSONへ退避し、成功済みの終了処理は繰り返さず、失敗分を次回Reloadまたは終了時に再試行します。既に終了した資源は復元しません。直接登録したタイマー・Hook・実行中ジョブ・外部の旧参照は退避で停止・更新されず、依存先の破棄前にコールバックを止める順序と、途中まで成功した終了処理の再試行は所有者が管理します。ジョブ所有者は協調的取消を要求し、完了前は例外で適用を延期します。強制停止・無期限joinや任意Python副作用の完全ロールバックは行いません。設定適用後の失敗は部分適用と登録済み終了処理が残り、修正後のReloadで解放・再適用します。MainWindow.destroyでも終了処理を呼び、失敗を通知して本体の破棄を続けます。対象外の旧参照を自動更新しないこと、資源取得・終了登録の例と再起動条件は日英extensions.mdを正とします。
+
+### 登録層と実行処理
+
+JSONの編集・複製・削除後は、JSON適用前の標準コマンドを復元し、custom.pyが追加したコマンドも保持します。管理層の同名はJSONを優先し、直接入力は公開リストの先頭一致を維持します。独自関数を再実行しません。JSON保存は同じフォルダの一時ファイルを閉じた後に置換し、失敗時は元ファイルと編集内容を保持します。
+
+標準コマンドの内部構成は次のとおりです。clnch_standard.configure(window, commands)は登録管理・実行処理・GUI入口を生成し、標準登録とキーを接続します。MainWindowの適用順や入力セッションの寿命は変更しません。
+
+- CommandRegistryは標準層とJSON層を所有します。各登録は(name, handler)として扱えるタプルに、所有者・登録元・未解決targetを持ちます。標準層の同名は最後の登録で上書きし、JSON層を重ねます。上書きでも元の名前位置を保ち、新規名は末尾へ追加します。
+- 公開のlauncher.command_listは通常のリストのままです。custom.pyのappend・insert・項目置換・削除・リスト代入を維持し、直接入力と補完はこのリストを使います。直接入力の同名は先頭一致です。GUI保存後は現在のリストを走査し、所有する項目を名前の小文字キーで最新の標準／JSON登録へ置換し、削除されたJSON項目は除去します。同名JSONを削除したときは同じ位置で標準登録へ戻します。管理外の項目は同一オブジェクト・順序・重複を保持し、先頭・中間・末尾の相対位置を維持します。新規名と公開リストから除去されていた管理名は、最後の管理項目の位置（削除対象も含む）の直後、末尾の独自項目より前に、標準層＋JSON層の順で追加します。管理項目が一つもなければ独自項目の後ろへ追加します。同じ管理名が複数箇所にあれば最初の位置だけで置換します。所有者付きタプルで判別し、項目のid集合や名前だけで独自項目を推測しません。通常のタプルに作り直した項目と別の所有者の登録は管理外です。
+- 別名実行とF12は登録管理を参照し、登録順に依存しません。標準適用後に公開リストへ追加された独自ハンドラは、従来どおり直接入力の対象であり、別名解決の辞書へは取り込みません。Linkの循環参照は解決不能のままです。実行時の循環は、参照経路を含むValueErrorを既存のコマンド通知処理へ渡します。
+- GUI入口はclnch_cmdstore.load_commandsで読込・検証し、登録管理がnormalize_actionと実行処理のハンドラ生成を使って次のJSON層とリスト全体を準備します。成功後だけ両者を差し替え、読込・検証・生成失敗では既存リスト・ハンドラ・Link解決を保持します。初回適用は独自項目を引き継がず、GUI保存後だけ保持します。ReloadはMainWindowが新しい標準リストと構成を作ってからcustom.configureを適用します。
+- CommandExecutorは登録管理からハンドラと別名連鎖の終端Linkを取得します。F12はこのLink文字列をコピーし、OS検索・環境変数展開・絶対パス化・実在確認を行いません。所在フォルダと基点置換では別名連鎖の固定引数を通常実行と同じ順に追加し、既存マクロ処理で環境変数・%param%を展開します。展開後の相対Linkはコンソールへ通知して拒否します。clnch_commandplatformの共通ヘルパーは実在するファイル／ディレクトリを確認し、ファイル名だけの実行先には既存のresolve_system_executableを使います。解決不能なら両操作とも何もしません。個別Modifierと共通既定動作、別名への引数引継ぎ、ShellExecuteへの委譲を別メソッドに分けます。共通設定は実行ごとにwindow.modifier_settingsを参照します。登録管理はGUI・実行処理・Windows APIをimportしません。
+
+別名では固定引数と入力原文を文字列のまま合成し、%param%位置または末尾へ挿入します。ShellExecuteへ渡すための分解・再結合は行いません。作業ディレクトリは呼出し元、操作の指定、実在ファイルの親の順です。ViewModeは参照起点の値を保ち、JSONの省略値はnormalです。OS検索は明示登録の直後に置き、PATH/PATHEXT、ユーザーのApp Paths各ビュー、マシンの各ビューの順を保ちます。
+
+登録Linkの明示的な相対ファイル／フォルダパスは非対応とします。clnch_cmdstore.validate_linkでWindowsの絶対パス・名前だけの指定・Shell URIと区別し、ルート相対・ドライブ相対も拒否します。JSONの形式検査では拒否せず、GUIは保存候補の編集中登録だけを検査して警告し、原本・入力内容を保持します。登録名への参照はパスとして検査しません。実行時引数で起動先が決まるLinkは最終値を実行時に検査します。通常起動ではCommandExecutorがShellExecuteCommandの内部引数_command_nameへ入力元の登録名を渡し、ジョブがマクロを展開した直後に検査します。既存のShellエラー通知を使い、キュー待ち中に環境変数が変わっても展開後の値を判定します。公開APIの既定呼出しと、登録Link以外の直接入力・独自Shellコマンドはこの制限を適用しません。WorkDirを指定しても相対Linkは許可せず、F12の取得処理とArgsの解釈は維持します。従来のサブフォルダ付き相対Linkと自動WorkDirの重複解釈は、相対Linkを拒否する仕様へ統一したため修正待ちとしません。
+
+公開リストと別名解決の参照範囲の違いは維持する互換仕様であり、修正予定ではありません。独自ハンドラをJSONの別名から呼ぶ機能は、必要になった時点で優先順位とLink情報を定める別の機能追加として扱います。循環実行の診断は構造変更とは別の動作変更です。CommandExecutorはActionInfoで実行ごとの参照経路を引き継ぎ、名前・修飾操作・Link・固定引数が同じ操作への再入時に、動的引数が減っていなければ循環と判定します。固定引数の追加で引数が増える循環も止め、_raが引数を消費する有限の再入と、修飾操作から同名の通常操作への参照は許します。入力元のCommandInfoは変更せず、正常終了・例外後や独立した実行へ経路を残しません。任意の独自Python関数の内部再帰は検査対象ではありません。
+
+### 入力原文と引数
+
+resolve_contextは別名を辿る順で固定引数を返し、修飾既定動作もその順に適用する（a→b→cのA・Bと入力はB A input）。
+
+標準メイン入力は最初のセミコロンだけで名前とWindows引数文字列を分け、直接URLは全体を扱います。直接ファイル／フォルダ実行はパス部分全体を囲むダブルクォート一組だけを除去し、実在確認・関連付け・Shell引渡しに使います。履歴は元入力、引数は最初のセミコロン以降の原文を保持し、パスをWindows引数として再解析しません。CommandInfo.arg_stringが起動用原文、argsがPython処理・Link/WorkDirマクロ用のWindows解析済みリストです。ShellExecuteCommandは非Noneのarg_stringをそのまま%param%へ挿入し、argsの再結合はしません。Pythonから直接作るCommandInfoのarg_string=Noneでは従来どおりjoinArgs（subprocess.list2cmdline）を使います。argsを変更して起動する処理はarg_string=Noneにします。別名の固定Argsも文字列で合成し、%param%があればその位置、なければ末尾へ空白1つで入力を追加します。入力なしでは余分な空白を追加せず、各文字列の内部表記を保ちます。最終Shellジョブで固定param・Link・WorkDirの既存マクロ展開を行い、挿入済みの文字列は再走査しません。filename・directoryの%param%は従来どおりargsの空白連結で、paramと区別します。_raは「_ra;対象 Windows引数」の対象トークンだけを読み、残りの原文を維持します。キー割当はargs=[入力全体]・arg_string=入力全体・mod=0です。標準メイン入力では引数部分とURLの更新・履歴を正規化しません。半角スペースは独自commandLine入力と履歴も含め、先頭・末尾・連続数を常に保持します。normalizeCommandLineTextはタブ・CR・LFをそれぞれ半角スペースへ置換するだけで、圧縮・トリムは行いません。preserve_argument_textは標準入力の引数・URLでこの置換と後続セミコロンの補完確定を抑止するために保持します。
+
+### JSONの読込と編集
+
+clnch_cmdstoreは名前だけ小文字化し、省略値を読込時に保持する。一覧用の操作検証省略と、全経路で必要な重複名検証を区別する。object_pairs_hookで最上位名の完全一致・lower()一致の重複を拒否し、元の両名を通知する。ネスト属性の既存解釈は維持する。名前検証は空文字列を許し、セミコロンとstr.isspace()を拒否する。GUIは空白を暗黙に除去せず、不正名の確認・削除による修復経路は維持する。
+
+実行・一覧・編集はclnch_cmdstore.load_commandsを使います。共通の検証関数がModifier・操作フィールド・文字列型・ViewModeを検査し、実行系と編集系の既存の検査順・エラー文言を保持します。一覧は名前だけを読むため、操作内容の検証を行いません。不正な操作がある場合も名前を表示でき、編集・保存時の既存の失敗処理へ渡します。エラー通知・選択と表示制御は各GUIが担当し、ストアはGUIやWindows APIへ依存しません。
+
+CommandEditorの編集状態はclnch_cmddraft.CommandDraftが所有します。検証済みの読込スナップショット、編集元名・編集モード、編集名と現在のModifier、Modifier別操作を保持し、GUIは表示中の入力を切替・保存の直前にupdate_currentへ渡します。モデルは編集値の前後空白除去と名前の小文字化、空欄コマンドの名前固定、操作の切替と保持、重複名・Link未入力の検証、改名時の旧キー除去を担当します。build_commandsは元データを変更せず保存候補を返し、空の未登録操作を追加しません。未編集の操作の省略値は保持します。共通スキーマ検証・保存時の既定値補完・JSON入出力はストアだけが担当します。
+
+CommandEditorはウィジェット、入力・ドロップ、選択・フォーカス・描画、モデルの検証結果に対応する既存文言の通知を担当します。読込失敗はGUI境界でload_errorへ保持し、保存要求時に入力検証より先に通知します。保存失敗ではモデルと入力欄を保持し、再試行できます。保存成功時は終了し、open_editorが親の復帰とウィジェット破棄を済ませてから、変更がある場合だけon_savedを呼びます。戻り値はモデルの保存名または取消時のNoneです。
+
+読込時は名前を小文字化し、省略された操作値をそのまま保持します。起動時の書込みは行いません。normalize_actionが登録済み操作の既定値を補い、実行登録と保存で共用します。save_commandsが名前順の整列も担当し、未登録Modifierは追加しません。補完後の内容が読込済みの内容と等しければ、一時ファイルの作成と保存後の再読込を省きます。commands.jsonはUTF-8・LFで保存し、JSON文字列内の改行値は保持します。省略値のある登録を保存で補完した場合は変更として扱います。
+
+空欄コマンドの行は未登録でも一覧先頭に表示します。表示だけではJSONを作成・変更せず、保存時に登録します。編集時はNameを固定し、一覧から削除できません。登録済みなら通常名へ複製できます。JSONから手動削除しても内容を自動復元しません。
+
+### 一覧の状態と保存通知
+
+CommandListWindowは一覧の選択・検索・表示を担当します。clnch_cmdlist内の_show_listが1回の一覧の生成・表示とキー／ドロップの受付、親の無効化と一覧の破棄を所有し、open_listは読込・選択キー・操作実行・再表示と一覧全体の終了時の親復帰を調停します。表示行の生成を_command_itemsへ集約し、削除後も同じ順序で選択を決めます。JSONと編集状態のモデルはストア・CommandDraftへ維持し、一覧に別のデータモデルを作りません。
+
+ListWindow.getResultとpopMenu・popFontMenuの公開結果は、整数または修飾キー付きタプルのままです。本体は取得済みの結果をclnch_listwindow._split_list_resultでインデックスと修飾キー有無の組へ揃えます。タプルは両要素と同一性を保持し、整数では修飾キーをNone（未返却）とします。結果取得後にreturn_modkeyやresult_modを読み直しません。既存getResultの差替え・例外と各入口の取得時点を維持し、取消・範囲・設定値の判定にはインデックスを使います。CommandListWindowの検索中はインデックスだけを元一覧へ変換し、公開結果の形式と修飾キーを保持します。open_listの結果Noneは既存の未選択判定で扱い、-1への置換や他の取得口への拡張は行いません。検証済みの選択インデックス自体を保持し、選択不要のdropと、選択必須の新規・削除・複製を分岐します。選択検証と編集・新規・ドロップのon_edit呼出しは一覧の生存中に行い、削除・複製の振分けはその一覧の破棄後に行います。メインの復帰は一覧全体の終了時です。
+
+編集・新規・ドロップのon_editには直前の一覧をparent_windowとして渡します。編集の保存名（空文字列を含む）を次の選択に使い、取消時は元の選択を保ちます。編集の親の無効化・復帰と、新一覧の表示まで旧一覧を保持する契約は[モーダル画面の資源所有](#モーダル画面の資源所有と例外時の復帰)に従います。一覧の構築完了後は配置・表示・ループ・結果取得・編集コールバックの失敗でも後始末を実行し、親の有効化・アクティブ化の一方が失敗しても残る処理と一覧破棄を試みます。構築途中の取得済み資源の破棄と、元から無効な親を含む復帰の契約は、次のモーダル画面の節に従います。
+
+削除・複製の保存候補は読込データを変更せず作成します。_save_list_commandsは保存成功後だけon_savedを呼びます。書込み失敗は元ファイルと選択を保持し、再操作できます。保存後のコールバック失敗は保存済みであることとReloadによる再反映を通知し、保存成功に対応する選択を維持します。編集保存のon_savedは編集側が所有し、一覧から重ねて呼びません。各再表示はストアから読み直し、外部変更を取り込む既存契約を維持します。
+
+JSONのキー・引数・ViewModeの解釈は[JSON形式](../docs/ja/command_json.txt)、操作は[操作一覧](../docs/ja/commands.md#コマンド一覧)を正とします。
+
+## 通常INIの保存と排他制御
+
+get／getintは取得エラー時、指定済みのdefaultを型変換せず返し、default未指定なら元の例外を送出します。数値を使うactiveMessageLoopのMISC.auto_completeは整数0を既定とし、未設定・不正値でも初期状態をOFFにします。Configは文字列0／1を照合・保存し、次の入力セッションへ反映します。commandLine・入力セッション・EditWidget・候補準備は整数の補完フラグを受け入れ、値をboolへ変換せず保持・引き渡します。フォント選択の空文字フォールバック等は各用途に残し、全INIのスキーマ化や既定値の一律集約は行いません。
+
+clnch_ini.read()／write()は引数なし・戻り値Noneのまま、失敗をprintErrorInfoで通知します。write()はdirtyでなければ何もせず、保存全体の成功後だけdirtyを解除し、失敗時は再試行用に保持します。RawConfigParserによる内容生成とUTF-8を維持し、保存時の改行はLFに統一します。読込失敗時のパーサー再作成とdirty解除も従来どおりです。
+
+通常INIは同じディレクトリの一時ファイルへ書き、flush・fsync・closeの成功後だけos.replaceで反映します。既存INIを保存開始時に開いて切り詰めません。書込み・同期・close・置換の失敗では元INIを保持し、初回保存なら未作成のままとし、一時ファイルを削除してから通知します。Windowsで置換を妨げる開いたハンドルや読取専用属性がある場合も、元ファイルを削除せず保存失敗として扱います。
+
+read／writeの双方で、同じWindowsセッション内の同じINIを名前付きミューテックスで排他します。INIの正規化した絶対パスから名前を作り、相対表記・大文字小文字の違いを揃えます。読込開始前／一時ファイル生成前に取得し、各処理完了まで保持します。最大10秒待機し、取得失敗・タイムアウトは既存のエラー通知へ渡します。ロックファイルは作成しません。
+
+取得後はfinallyで所有権を解放し、成功・失敗のどちらでもハンドルを閉じます。所有プロセスの異常終了で放棄されたミューテックスを待機者が取得した場合も、INIを直接書き換えず完成後に置換する保存契約を使って処理を続行します。最後のハンドルが閉じるとWindowsがミューテックスを破棄します。
+
+排他の対象はこの契約を使うプロセス同士のファイル入出力です。設定を読んでから編集・保存する全期間の排他や変更のマージは行わず、最後に保存した完全な内容を採用する従来の動作を維持します。INIの直接編集はアプリ終了後に行います。置換によってファイルの識別子や個別ACL等のメタデータは引き継がれるとは限りません。プロセス強制終了では一時ファイルが残る場合があり、OSクラッシュ・電源断・ストレージ障害時の永続性までは保証しません。
+
+## Configメニューの表示と設定適用
+
+clnch_configmenu内の_selectConfigValueは、単純な択一設定の現在値照合・初期選択・表示・取消を担当します。不明な現在値は従来どおり先頭を選び、取消はNoneを返します。数値設定の文字列一覧と、表示名・保存値のタプル一覧をそのままListWindowへ渡し、独自設定から見える項目形式も保持します。値の取得、INI変更、設定固有の即時反映は各_config関数に残します。
+
+_settingItemは現在値付きの表示行だけを作ります。_iterConfigMenuは項目構築関数を選択のたびに呼び、選択位置を保持して、項目数が減った場合だけ範囲内へ戻します。適用処理は呼ばず、項目と選択位置を呼出し元へ渡します。テーマ変更等のFalseを上位へ返す表示メニュー、そこで終了するルート、通常は再表示する入力・Alt+Enter・ホットキーメニューの違いは、各呼出し元の制御に残します。
+
+| 設定 | 変更・適用・保存の契約 |
+|---|---|
+| テーマ | INI変更→reloadTheme。表示メニューとルートを終了 |
+| フォント名・サイズ | INI変更→updateFont |
+| 最小・最大幅、表示位置、自動補完 | INI変更。追加のwrite・configureは行わない |
+| 最前面・区切り文字・キー配列 | INI変更後、それぞれupdateTopMost・setPathSlash・configure |
+| ホットキー割当・動作、非アクティブ時動作 | INI変更後、それぞれupdateHotKey・updateInactiveBehavior |
+| INPUTの5項目（履歴・補完・非アクティブ時の入力・Space・Tab） | 変更時だけapplyInputSettings。成功後だけINI変更→write。独自設定を再実行しない |
+| Modifier | 変更時だけ専用モジュールのwriteで検証・INI変更→実行時状態の更新→INIのwrite |
+| Alt+Enter系4キー | 変更時だけ検証・INI変更→INIのwrite。保存成功後だけ該当キーの実行時設定を更新し、失敗時は変更前のINI状態と実行時設定を保持 |
+| 保存先 | execonfigで次回起動用の指定だけ保存。取消・同値なら変更しない |
+
+単純な択一設定では同値の確定でも従来の更新処理を呼びます。入力・Modifier・Alt+Enterの同値抑止と失敗時の状態保持は各既存処理が担当し、一律の保存・再構築へ統合しません。
+
+Modifier個別メニューは動作に応じた基点・置換先・不足状態の説明と分岐を同じループで扱います。基点一覧の編集・並べ替えと一括保存、フォントプレビュー、位置保存、ホットキー専用画面、Alt+Enterと基点の編集ダイアログ、保存先の操作は個別処理のままです。サイズ・DPI・親の無効化／復帰・messageLoop・destroyの順序を変更しません。
+
+テーマ選択はthemes/の欠損によるFileNotFoundErrorだけを捕捉します。有効なINI候補がなければ一覧を開かず、INI変更・テーマ再読込を行わずに親へ戻ります。アクセス拒否等の例外は伝播し、正常な選択確定時のFalse返却を維持します。
+
+### ホットキーの表示と入力
+
+ホットキーGUI表示は既存のckit_key.KeyEvent.formatHotKeyへ集約する。KeyEventの文字列構文・vkToStr・Keymap・INI形式は維持し、通常キー名をGUI専用のOEM記号表で補う。修飾キー判定はKeyEvent.isModifierKeyを共用し、割当画面のEnterとMainWindow.updateHotKeyの登録前で拒否する。ネイティブ入力配送とRegisterHotKey方式は変更しない。割当画面は35セルを基準に文言幅と作業領域で決定し、入力中は拡縮せず、狭い領域の表示は省略記号で示す。
+
+## モーダル画面の資源所有と例外時の復帰
+
+生成済みウィンドウを呼出し元へ返すまでは各コンストラクターが資源を所有します。TextWindowはネイティブWindow取得後のTextPlane生成・フォント設定・配置が失敗しても取得済み資源を破棄します。ListWindow・MessageBox・ホットキー画面・CommandEditor・Dialogも、基底構築後に失敗したときは自身の破棄を試みます。CommandEditor.destroyは入力部品→行別Plane→基底ウィンドウ、Dialog.destroyは編集部品→基底ウィンドウを解放します。行別Planeはフォント設定より前に所有リストへ登録します。ChoiceWidget・HotKeyWidgetは独立したネイティブ資源を持ちません。
+
+各モーダル入口は生成前の親のisEnabledを保持し、生成後は配置・表示・無効化より前に後処理を登録します。通常は従来の再有効化→アクティブ化→子の破棄の順で復帰します。元から無効だった親は有効化・アクティブ化せず、外側のモーダル処理へ復帰責任を残します。コマンド編集はメインから直接開く場合はメイン、一覧からの編集・新規・ドロップでは直前の一覧をネイティブの親とし、親を隠さずに無効化します。表示状態を変更しないため、元から非表示の親を表示しません。一覧から開く編集画面は親の外枠右端・上端へ配置し、既存のfitWindowToWorkAreaで作業領域へ補正します。メインから直接開く経路はadjustWindowPosition(default_up=False)を維持します。編集画面は表示・アクティブ化後にSetFocusで入力先を確保します。一覧からの編集終了時は一覧を再有効化・アクティブ化し、メインは無効のままです。一覧の再構築中もメインへ戻らず、一覧全体の終了時に生成前のメインの有効状態を復帰します。編集終了後は新一覧の表示完了まで旧一覧を保持し、一覧が存在しない表示間隔を作りません。旧一覧の破棄は次の表示後、再読込・構築・表示の失敗時は新旧両方を解放します。一覧の破棄は各生成単位、メインの復帰はopen_listの外側のExitStackが所有します。無効化が状態を変えた後の例外も復帰対象です。
+
+同じ親復帰・子破棄契約を持つ入口はclnch_miscの内部_modal_dialog_scope(parent, dialog, was_enabled)を使い、標準ExitStackとckit_miscの内部_cleanup_on_exitによる登録と実行だけを共用します。生成・配置・表示・フォント設定・親無効化・ループ・結果取得・固有コールバックは各入口に残します。構築途中や部品・Plane・入力セッション等の別の資源管理はこのヘルパーへ統合しません。一つの後処理が失敗しても残りを試みます。本体または最初の後処理の例外を維持し、追加の失敗はその例外のnoteへ残します。構築時だけ必要な後処理はerror_onlyで正常構築後の資源を保持します。新たなモーダル基底クラスや公開APIは設けません。open_editorのon_shownは親無効化後・ループ前、変更時のon_savedは復帰と破棄の成功後という順序を保ちます。保存済みファイルを後処理や通知の失敗で巻き戻しません。
+
+破棄・親復帰API自身が失敗した場合は後続を試みますが、そのAPIの成功までは保証しません。ネイティブAPI内部で取得が完了しないOS資源、独自設定が別途生成した資源、プロセス強制終了の解放はこの所有範囲の外です。入力部品自身の生成途中の候補ウィンドウは既存EditWidgetの後処理を使います。
+
+DialogのEdit・CheckBox・Choiceは、未構築・非表示でwidgetがないときにはキー・文字を配送しません。Tab移動元のEditも、実部品がある場合だけ候補一覧を閉じます。Choiceは非表示化時に選択値を保持して参照を解除し、固有のdestroyは呼びません。表示部品の操作とEnter／Escの優先順は維持します。
+
+## 入力・修飾操作・失敗時の継続
+
+### 修飾操作と非同期処理
+
+修飾キーの所在フォルダ／基点置換は、別名の終端Link・継承WorkDir・固定引数の順序、マクロと環境変数、相対Link検証、選択時の設定をUI側で確定します。これらはファイルシステムを参照しません。実在する対象の解決（isfile／isdir、PATH/PATHEXT・App Paths検索）、基点置換、最終isdir、shellExecuteは1個のジョブとして既存の既定JobQueueへ投入します。待機中に登録・入力・設定が変わっても受付済みの内容を使い、UIへ同期的に結果を待ち戻しません。不存在・置換不一致は従来どおり無動作で、ジョブ内の例外はShellExecuteCommandと同じ起動失敗見出しと例外本文を1回通知します。投入成功を通常起動と同じ受付として扱い、入力終了・履歴処理は既存の入力セッションへ任せます。起動後の明示的なフォーカス操作は行いません。
+
+直接ファイル入力のonEnterは、全体の引用符一組を除いた先頭フィールドをos.path.existsで同期確認し、不在なら副作用なくFalseを返します。実在時だけ関連付けの関数を予約し、未一致なら原文引数でShellジョブを投入し、履歴追加・入力終了後Trueを返します。この存在確認は遅いドライブ／UNCでUIを待たせる既知の制約です。EnterでcheckNetConnectionやclnch_native.findFileは呼びません。標準の受付順は登録名→OS実行ファイル検索→URL→ファイルで、custom.pyが追加・変更した順序も維持します。OS検索のPATH/PATHEXT・App Pathsと単独ドライブ確認も同期判定のままです。
+
+存在確認だけをジョブへ移し先にTrueを返すと不存在入力を受付し後続プロトコルを止め、Falseを返すと有効なファイルを取りこぼすか後続処理と二重実行になります。完了までUIで待つ方法やキャッシュによる推測も採用しません。直接入力の安全な非同期化には、保留結果とUIでの後続判定再開、入力セッションの寿命・編集／再Enterとの競合、同期IPC配送、独自onEnterの真偽契約を含めた別途の設計が必要です。現在の仕様内で頻用先の待機を避けるにはJSONに絶対Linkを登録し、通常のShellExecuteCommand経路を使えます。既定キューは逐次実行のため、遅いジョブは後続ジョブを待たせます。OS呼出しのタイムアウト短縮や実行中ジョブの強制停止は行いません。
+
+名前実行は最初のセミコロンより前だけをstrip().lower()で照合し、登録コマンドをOS検索より先に扱います。引数原文と履歴用の入力原文は保持します。単独ドライブ文字はルートの実在確認後だけ受け付け、不存在なら後続のファイル入力と同様に入力を保持します。
+
+ContextMenuの標準割当はcmd_keymapです。入力仲介はNamedCommandのownerが当該MainWindow、nameがContextMenuの場合だけ、最初のセミコロンより前のパスを実在確認し、対象なしではexecuteCommand・履歴追加・quitへ進みません。keymapへ移した同じNamedCommandにも適用し、同じ物理キーへの独自関数上書きには適用しません。パス全体の引用符一組の除去を直接ファイル入力と共有し、一部分の引用符や引数原文は再解析しません。登録Linkでは別名と環境変数・マクロの解決後、絶対パス全体の一組だけを除去し、所在フォルダ・基点置換・ShellジョブのWorkDir判定・起動に使います。F12の終端Link原文コピーと、公開ShellExecuteCommandの空directory契約は保持します。
+
+MainWindow.activeMessageLoopは入力設定と内部_LauncherInputHandlersをcommandLineへ接続します。仲介処理はclnch_commandline.pyに置き、履歴候補と各入力プロトコルの候補の統合・重複除去、ステータス文字列の選択、cmd_keymap優先の実行、Enterの受付順、Escの位置復帰・非アクティブ化を担当します。保持するのはMainWindowへの参照だけです。履歴・キーマップ・入力プロトコル・入力設定は呼出し時に参照し、入力中のReloadによる置換も即時に反映します。EditWidgetや結果、一時フックの復元・寿命は持ちません。
+
+アプリ内のアクティブ状態はMainWindow.isLauncherActiveへ集約します。メイン自身がアクティブな場合に加え、前面HWNDからgetOwnerをたどってメインへ到達する内部画面も対象にします。Config・履歴・一覧・編集・入れ子の確認画面・フォント選択・コンソールが存在するだけではアクティブ扱いにせず、外部への移動を判定します。ConsoleWindow.isOwnerActiveも同じ判定を使います。
+
+WM_ACTIVATE(False)のコールバックでは表示・入力部品のアクティブ状態だけを更新し、入力を消去しません。次の所有ウィンドウがアクティブになる前に通知されるため、既存のメイン10msタイマーで遷移後の状態を照合し、アプリ内から外部へ変わったときだけsaveStateとINI書込みを行います。内部画面のモーダルループ中もメインのタイマーは動くため、メインへの追加非アクティブ通知がない外部移動も検出します。saveStateの位置・履歴・コンソール保存と設定による入力クリアは維持します。コマンド実行による入力終了、履歴選択時の入力開始、Escの消去、モーダル親の有効化・復帰順序は各入口の従来の責務です。
+
+補完offは候補なし、commandsはlauncherの登録名候補だけを使い、standardだけで従来の履歴と全入力プロトコルを統合します。cmd_keymapの入力終了と履歴追加は独立して指定し、標準Alt+Enter系4キー・F12の関数だけが内部属性_append_history=Falseで履歴追加を抑止します。標準Alt+Enter系の関数を内部属性_alt_enter=Trueと_alt_enter_key（通常は空文字列、追加キーはctrl/shift/ctrl_shift）で識別し、対応設定のactionがnoneなら実行・入力終了へ進む前にキーを受け止め、文字列・キャレット・選択・フォーカス・履歴と入力セッションを保持します。実行時に各キーの独立設定を参照するため変更は即時反映します。プロパティ処理・実在確認は通常Alt+Enterだけで行い、追加3キーは外部アプリ／Web検索をそのまま実行します。設定・引数処理・JobQueueへの投入はclnch_altenterconfigへ集約します。キー番号による例外扱いはせず、custom.pyで同じキーを別関数へ上書きした場合も通常のキー割当契約を維持します。
+
+組込の入力登録名はhistory・config・reload・about・quit・new・_raで、Pythonのcommand_Reload等は変更しません。候補全般は実行・履歴追加と同じlower()で重複判定し、履歴→各プロバイダーの最初の候補順・表記を保ちます。入力全体を置換する候補が登録名と一致する場合だけ、最初に実行される登録名の表記を優先します。引数・パス末尾の候補を登録名に置換せず、履歴の保存文字列は変更しません。候補からの履歴削除も大文字・小文字を区別しません。
+
+通常の外部起動とAlt+Enterは既存の起動処理を維持し、起動先への自然なフォーカス遷移に委ねます。成功後の明示的な非アクティブ化は行わず、専用の成功通知・入力監視も持ちません。標準F12だけは内部属性_inactivate=Trueで結果によらず入力終了後に非アクティブ化します。Link解決とコピー方式は変更しません。
+
+MainWindow.commandLineは公開シグネチャを保持し、内部の_CommandLineSessionを生成して結果を受け取ります。セッションは初期入力・選択範囲・タイトル・ステータス・ハンドラ・EditWidget・最後のEnter結果・予定コマンドを所有します。入力設定・履歴・キーマップ・コンソール・ウィンドウ自体はMainWindowに残します。custom.pyへ渡す操作オブジェクトのメソッドとハンドラ契約は維持します。操作メソッドは現在MainWindowへ接続された入力欄を使い、入れ子の入力終了後に予定コマンドが文字列を返した場合も復元済みの入力欄へ反映します。
+
+コマンドの文字列戻り値は、空文字列を含め、現在の入力欄へ設定して全選択・再描画し、履歴追加と追加のquitは行いません。最上位セッション終了後など入力欄が存在しない場合は反映せず正常終了し、新しい入力欄は開きません。公開変更履歴の文字列反映と入れ子の既存動作を維持し、未規定の再入力開始は追加しない保守的な扱いです。commandLine自体は最後にEnterで取得した文字列を返し、予定コマンドは登録順に1回ずつ実行します。文字列以外では指定された履歴を追加し、コマンド関数の例外は表示してそのコマンドの履歴追加を省き、後続の予定コマンドを実行します。
+
+_TemporaryInputStateがcommandline_edit・keydown_hook・char_hook・mouse_event_mask・status_bar_paint_hookのうち変更する属性だけを退避します。ExitStackへ復元処理を登録してから属性を変更するため、適用途中の失敗でも変更済みの状態を戻します。入れ子は直前の値へLIFOで復元し、未指定の属性には触れません。単純なtry/finallyの重複をこの内部クラスへまとめ、汎用イベント管理は導入しません。
+
+MainWindow.commandline_editはEditWidgetまたはNoneを保持し、初期Noneと入力終了後の復元を維持します。ContextMenuのcloseList・x・widthとRemoveHistoryのremoveCandidateは、取得済みの値をclnch_misc._require_commandline_editへ渡し、Noneなら従来と同じAttributeErrorの本文・name・objで失敗します。ContextMenuでは入力欄を3回独立して参照し、closeListやx取得中の交換・解除を次の参照へ反映します。参照の固定、None時の処理省略、代替入力欄の生成は行いません。
+
+正常時はステータス初期化、EditWidget生成・接続、IME矩形設定、フック適用、幅更新・描画、キー除去、メッセージループ、EditWidget破棄、元の入力状態復元、IME無効化、キャレット退避、ステータス再描画、予定コマンド実行の順序を保ちます。生成開始後は終了処理をコンテキストで保護し、IME矩形・描画・ループ・破棄などの失敗時も後続の後処理を試みます。最初の例外を保持し、後処理中の追加例外は例外のnoteへ残します。異常終了時は予定コマンドを実行しません。EditWidget自身も、候補ウィンドウ取得後の初期化失敗時には候補の破棄を試みます。候補準備情報の初期値はNoneとし、準備後の情報をpopupListで消費します。有効な候補窓で未準備の場合はUI操作前のTypeErrorを維持し、成功後または非操作経路でだけ情報を解除します。途中失敗では解除しません。破棄そのものが失敗した資源の解放までは保証しません。
+
+subThreadCallも同じ一時状態管理を使います。ワーカー実行中はキー・文字入力を抑止し、Escは指定されたキャンセル関数を呼びます。通常はUIメッセージループ後にjoinして結果・例外を取得し、フック復元後にraise_error・print_tracebackの既存規則で返却・通知します。UIループ・キャンセル関数などが例外終了した場合はフックを復元してその例外を返し、実行中ワーカーを強制停止したりjoinでUIを無期限に止めたりしません。この場合ワーカーは自分の処理が終わるまで継続し、結果は呼出し元へ返りません。ワーカーは通常どおりUIオブジェクトへ直接アクセスせず、実行中の資源は処理自身の寿命で管理する必要があります。
+
+### 補完と履歴
+
+入力設定はINIの[INPUT]とConfigで選択します。既定は履歴persistent、補完候補standard、Spaceは空白挿入、Tabは共通部分の補完です。入力中の自動補完は既定でoffです。メイン入力では入力中のEditWidget.getAutoComplete()を候補生成の前提とし、OFFなら補完候補の設定に関係なく履歴・登録名・ファイル・共有・独自プロバイダーを参照せず空候補を返します。ONの場合だけ補完候補のoff／commands／standardに従います。Tab・候補操作用のSpace・上下キー等も同じ空候補を使うため、OFFでは候補ベースの補完を行いません。AutoCompleteOffとToggleによるOFF切替は表示中の候補を閉じ、入力・選択・履歴を保持します。On／Off／Toggleは入力中の状態だけを変更し、INIの次セッション用初期値は変更しません。公開EditWidgetのauto_completeは自動挿入だけを制御する既存契約のままとし、独自commandLineやDialog.Editの候補動作は変更しません。起動直後は履歴未読込みの状態からconfigureで保存済み履歴を読み、同じ履歴モードでのReloadではメモリ履歴を保持します。標準入力設定の変更だけで独自処理を再実行・解除しません。
+
+履歴追加・INI読込・保存では空文字列を除外し、空白のみの文字列は除外しません。履歴off/sessionへの切替はメモリ履歴と保存済み履歴を削除し、sessionだけが切替後の新しい履歴をメモリに追加します。起動時もoff/sessionなら、初期モードoffと同じ場合を含めて保存済み履歴を削除し、削除があれば初期化中にINI保存を試みます。削除対象は[COMMANDLINE]のhistory_にASCII数字が続く全キーで、欠番・1,000番以上も対象とし、他のキーは維持します。Configではモード変更と削除を同じwriteで保存し、終了・非アクティブ時の既存保存もdirtyを再試行します。汎用INIの原子的置換・排他・失敗通知を使い、削除成功通知は追加しません。persistentへ戻すと現在のINI履歴を読み、削除済み履歴もセッション履歴も引き継ぎません。同じ履歴モードのReloadではメモリ履歴を保持します。persistentへの切替は一時リストへ読み、正常終端後だけ履歴・モードを確定します。想定外の読込障害では直前の履歴・モードを保持して1回通知し、Configの指定は保存しません。初回起動は既定offを保って後続の設定適用を続け、部分的な履歴で保存済み履歴を上書きしません。
+
+履歴一覧はMainWindowの対話操作として残します。空一覧のDelは何も削除せず消費し、選択可能な項目だけを削除します。生成済み一覧の配置・表示・入力・結果取得が失敗しても親の有効化と復帰を試み、復帰処理が失敗した場合も一覧を破棄します。失敗時には履歴の再入力へ進みません。
+
+修飾キーはJSONの個別操作を優先し、未登録ならINI [MODIFIER]の共通既定動作を使います。基点置換は最初に一致する共通の置換元とキー別の置換先を使用し、未設定・不一致・結果不存在なら実行しません。入力と所在フォルダ取得側の独立した真偽判定を維持し、取得したNoneをnormpathへ使う場合は既存のTypeErrorを同じ操作境界で送出します。この共通設定は内蔵コマンドや直接入力・未登録のPATH検索へ一律適用しません。
+
+Alt+EnterはINI [ALT_ENTER]とConfigで管理し、入力全体をセミコロンで分割せず渡します。設定と入力をジョブ投入時に保持し、ファイル検査・OS起動はJobQueue経由で行います。メニュー変更時にJSONや独自処理を再構築しません。
+
+標準補完は列挙に失敗しても文字入力を継続します。色取得に失敗した場合も通知と代替色で描画を継続します。
+
+## メインの閉じる要求とアプリ終了
+
+有効なメインのWM_CLOSEハンドラーはWindow.quit()だけを呼びます。ネイティブのquitフラグはそのWindowのmessageLoopが消費・解除する一回限りのループ終了要求で、PythonのMainWindow.quit_requested（アプリ全体の終了要求）とは別です。topLevelMessageLoopは後者がFalseなら戻ったセッションの後で次の入力／待機ループを開始します。ループ終了後に入力部品と一時フックを復元してから次を開始するため、WM_CLOSE自体で入力ループを再帰呼出ししません。
+
+入力中のWM_CLOSE／SC_CLOSEは現在の入力を破棄し、メインがアクティブなら空欄入力を再開します。非アクティブ中は常駐待機へ戻り、hide設定なら非表示を維持します。モーダル中の無効な親へのWM_CLOSEはcommand_Quitと同様に既存の子を前面化するだけで、親のネイティブ終了要求を設定しません。これにより子を閉じるまで親のタイマー（ジョブ完了通知・SyncCall等）が停止することを防ぎます。子の取消後は親を再有効化して通常入力へ戻ります。子へのWM_CLOSEはその画面の取消です。通常のWM_SYSKEYDOWNはckitのキー通知で処理を終えるため、既定のAlt+F4はSC_CLOSEへ進まず、直接届いた閉じる要求と区別します。
+
+完全終了はマニュアルに記載したquitです。command_Quitはメインが有効な場合にだけPythonの終了要求とネイティブのループ終了要求を設定します。モーダル中は既存の子へ戻り、終了要求を受け付けません。通常終了はclnch_main.pyのstop→saveState→終了タイムアウト監視→ジョブ取消→destroy（拡張資源・コンソール・窓の解放）→ジョブ待機→INI書込みへ進みます。WM_ENDSESSIONのTRUEは別経路で状態保存とINI書込みを行い、FALSEは保存しません。実際のログオフ／シャットダウンによるプロセス終了を通常のquit後始末と同一視しません。[WM_CLOSE](https://learn.microsoft.com/en-us/windows/win32/winmsg/wm-close)と[WM_ENDSESSION](https://learn.microsoft.com/en-us/windows/win32/shutdown/wm-endsession)を参照してください。
+
+WM_CLOSEを完全終了へ変更すると常駐を終え、非アクティブ化へ変更するとフォーカス・表示とモーダル中の扱いが変わります。現行の日英マニュアルはこれらを要求しておらず、入力再開・モーダル復帰の検査で操作不能は再現していないため、有効なメインの既存挙動を維持します。モーダル中だけ親のタイマー停止を防ぐガードを加えます。入力中の閉じる要求で未実行入力が失われる点と、閉じても常駐が続く点は現行の制約です。将来変更する場合は「入力を閉じて常駐」「完全終了」「現状維持」を仕様として選び直します。
+
+## 保存先とプロセス識別
+
+exe隣のreclnch_exe.iniの[DATA] multi_userが0ならアプリ内settings/、1なら%APPDATA%/ReCraftLaunchを使用します。未作成なら初回起動時に0で作成し、既存ファイルは保持します。reclnch_exe.iniはUTF-8・LFで保存します。変更は次回起動から反映し、設定の自動移動・コピー・旧配置へのフォールバックはしません。
+
+reclnch.ini、commands.json、custom.py、scripts/は選択した保存先を使います。extensions/・テーマ定義・ヘルプはアプリ側の共通資源です。旧INIやCraftLaunchのAppDataを自動移行・変更・削除しません。
+
+開発実行はsitecustomize.pyが資源ルートを設定し、themes/・extensions/をリポジトリから参照します。既定の設定はbuild/run/x64/<構成>/settings/です。開発側でもmulti_user=1なら通常実行と同じAppDataを使うため、隔離検証ではOFFを維持します。
+
+既存インスタンスの識別は実行フォルダではなくウィンドウクラス・タイトルです。CraftLaunchとは別に起動できますが、ReCraftLaunchの別コピーは既存インスタンスへIPCを送るため、検証時は他コピーを終了します。
+
+引数なしの再実行は空のIPC要求を送り、hotkey_Activateのアクティブ化／トグル設定に従います。引数付きはexecute、commandLineの順で処理します。モーダル画面表示中は子画面を前面化し、メイン入力ループへ再入しません。専用文字列によるアクティブ化ハンドラーは持ちません。
+
+--executeは通常入力と同じcommandline_listの順で登録コマンド、OS検索、URL、ファイルを受け付けます。IPCのexecute/text値はINI内でJSON文字列として転送し、前後空白・タブ・引用符を保持します。各項目の受付後にplanCommandで予約された関数へ同じCommandInfoを渡し、1回実行してから次の項目を処理します。修飾キーは0で、履歴追加・入力欄操作・入力ループ終了は行いません。コマンド関数の例外は通常入力と同じく通知し、後続項目を処理します。ShellExecuteCommandやURL・直接ファイル起動のJobQueueへの委譲は各ハンドラが維持します。
+
+モーダル中はメインのisEnabled()がFalseになるため、組込のConfigMenu・History・Reload・Quitと標準newの入口で既存popupのforegroundを要求して戻します。JSON別名・独自関数から同じ入口を呼ぶ場合もこの判定を通ります。名前だけでIPCを拒否せず、JSONによる同名の外部起動や独自コマンド、後続executeは維持します。一覧から編集への正規の遷移はnew_commandを通らず、直前の一覧を親とする_open_command_editorで扱います。任意の独自ハンドラーが直接configure・画面生成・破棄を行うことまで隔離しません。
+
+配送はWindow.sendIpcの同期SendMessage(WM_COPYDATA)→WindowProc→MainWindow._onIpc→IpcData.execute→commandLineです。子のmessageLoopも同じスレッドの全窓へ配送するため、無効なメインにもIPCが届きます。受信中に新たなモーダルループへ入れば、送信元と後続executeはその復帰まで待ちます。タイムアウト・延期キュー・ReplyMessageは追加しません。通常GUIは入力欄の破棄・一時状態復元後に予定コマンドを実行しますが、IPCは既存入力を終了せず受信コールバック内で実行します。全execute後に入力指定を処理し、quit_requestedが立った場合は入力指定を処理しません。モーダル中の入力指定は破棄し、子へ前面化要求を出して戻ります。
+
+IPCの--selectionは0・1・2・3・4・5・Aを公開値とし、省略時は5です。文字列長をn、最初のセミコロン位置（なければn）をkとすると、順に[0,0]・[0,k]・[k,k]・[min(k+1,n),min(k+1,n)]・[min(k+1,n),n]・[n,n]・[0,n]を渡します。3・4はセミコロンなし・空引数では末尾の空選択、空文字列では[0,0]です。後続セミコロンは引数部に含め、URLも特別扱いしません。未知値の既存エラーと[0,0]へのフォールバックを保持します。範囲の正規化はclnch_ipc内で行い、EditWidget・入力セッションへ汎用クランプを追加しません。--executeの経路は独立しています。
+
+IPCの位置指定はast.literal_evalで2要素のタプルまたはリストを解析し、有限のint・floatだけを受け付けます。bool・式・空入力・不正な型は既存の位置指定エラーで終了します。座標範囲は制限せず、割合計算・移動・アクティブ化・入力ループ・位置復帰の順序を維持します。
+
+ckitのネイティブコールバック境界では、C int解析が成功した場合だけ戻り値を使います。失敗は既存のPyErr_Printで表示・クリアし、ヒットテストはDefWindowProc、メニューは表示・親から継承した有効状態・未チェック、messageLoopの条件は続行という既定を使います。messageLoopの破棄／WM_QUIT／quit／正常な0による終了順は維持します。メニューsequenceの長さ・要素取得失敗はそのsequenceの構築を中止し、取得済み参照を解放します。リサイズ寸法は2要素の解析が両方成功した場合だけ反映します。pyautoのenumは既存どおり、例外・不正戻り値・引数構築失敗を表示して列挙停止し、Noneを返します。新規参照は解析成否によらず解放し、エラーを残したままPythonへ正常復帰しません。
+
+WM_COPYDATAは識別値0x101の内容を従来どおりUTF-8からstrへ変換し、DWORDのバイト長をPy_ssize_tへ明示変換します。長さ0は空str、構造体NULL・非0長のデータNULLは拒否します。復号・引数構築・ハンドラ失敗を表示してFALSEを返し、次の有効な要求を処理します。正常UTF-8・埋込NUL・ハンドラ入力のstr契約、送信APIのNone返却は維持します。非NULLのデータ領域がcbDataバイト読取り可能であることはWin32の送信契約であり、任意の無効アドレスを探査する処理は追加しません。[Pythonの値構築仕様](https://docs.python.org/3/c-api/arg.html#c.Py_BuildValue)と[WM_COPYDATAの送受信契約](https://learn.microsoft.com/en-us/windows/win32/dataxchg/wm-copydata)を参照してください。
+
+## 文言と言語選択
+
+日本語・英語の定数をclnch_strings_ja.py・clnch_strings_en.pyへ分け、clnch_strings.pyから日本語定数を静的に公開します。起動時だけinitialize(language)で選択言語を窓口へ適用し、get_language()は現在適用中の言語を返します。定義モジュールは変更しません。既存の定数参照・名前付きプレースホルダー・識別子・保存形式を維持します。
+
+通常起動は保存先決定、reclnch.ini読込、MISC_LANGUAGE取得、窓口初期化、clnch_text.initialize()によるckitの12文言供給、GUIモジュールimport、MainWindow生成の順です。import時に文言を保持する修飾キー・Alt+Enter・編集・一覧も確定済み言語を使います。既存インスタンスへのIPC送信だけならINI・GUI本体の読込前に終了します。ckitから本体への逆importはありません。
+
+MISC.languageはja／en、未設定はenです。不正値はenで起動し、保存値は修正しません。Configは次回起動用の値を既存INI方式で保存して再起動を案内し、現在の適用言語は変えません。Reloadからも初期化を呼びません。OS言語判定・外部言語ファイル・実行中の切替は持ちません。
+
+Debugはソース、Releaseは共通のlibrary.zipを読み、同じINIで選択します。窓口と両言語定義を収録し、日英ヘルプ・README・COMMANDSを単一ZIPへ同梱します。API説明はソース内の日英併記、原稿はdocs/ja・docs/en、CraftLaunch旧履歴は日本語原文のみです。
+
+## 配置とウィンドウの寿命
+
+EditWidget.popupListの候補窓差替えは、旧窓の参照・有効状態・候補基点・配置情報を保持し、無効化・生成・遅延登録・新窓への項目設定が失敗した場合に復元します。生成済みの新窓は解放し、準備情報は成功時だけ解除します。差替え完了前の遅延破棄要求は保留し、成功後に処理します。失敗後に残った遅延コールバックは復元した旧窓を破棄しません。元の例外を保持し、後始末も失敗した場合はnoteへ残して他の後始末を試みます。正常時の無効化→生成→50ms遅延登録→配置情報更新→項目設定の順序と、同じ配置での窓の再利用を維持します。 同じ配置で窓を再利用する場合も、項目設定前に準備済みの補完開始位置を反映します。項目設定が失敗した場合は以前の開始位置へ戻し、準備情報を保持します。画面位置が同じでも、横スクロールにより文字列内の補完開始位置が変わることがあります。
+
+ckit_widgetとckit_textwidgetのCandidateWindowは、基底TextWindowの生成完了後に派生側の初期化資源を引き受けます。属性設定と初回setItemsが失敗した場合だけ、既存の_cleanup_on_exitでTextWindow.destroyを呼び、TextPlaneとHWNDを解放します。基底生成中の失敗は基底側が処理し、未完成の派生destroyは呼びません。元の例外を保持し、破棄も失敗した場合はnoteへ残します。正常時の設定・描画・表示順は維持します。
+
+表示幅を既存getStringWidthで測り、作業領域と枠を含む上限で配置します。ラベル・説明・択一欄・ボタンを必要に応じて折返し・縦配置し、背の高い編集画面はスクロールします。描画・クリック・ドロップ・キャレット・IME矩形・候補位置は同じ配置結果から求めます。汎用レイアウトエンジンは追加していません。
+
+通常の一覧は内容幅へ縮み、最大幅を上限とします。コマンド一覧は開くごとにGEOMETRY.max_width（表示オプションの横幅上限、既定80）を読み、画面の作業領域との小さい方を上限にします。上限を超える名前だけを折り返し、他の一覧の上限は変更しません。ListWindowだけはDPIに応じた左右余白を持ちます。内容説明は左寄せ、入力画面の操作案内は右余白2セルへ右寄せします。コンソールの既定80×32セルは維持し、保存寸法も作業領域へ制限します。
+
+ckitcoreのWindow::showは非表示から表示する直前にflushPaint(NULL, false)で画面転送せず初回バッファを完成させます。生成時show=Trueも同じ経路です。表示済みのタイマー更新を維持し、Configに個別の暫定flushを置きません。flushPaintはGetClipBoxのNULLREGION（空領域）だけを正常に転送省略し、オフスクリーン描画は維持します。GetDC・GetClipBox・BitBltの失敗は直後のWinErrorを保存し、取得したDCの解放後にOutputDebugStringWへ診断を出します。失敗時はdirtyを保持して次回の再描画を許し、Releaseでもassertの有無に依存しません。
+
+## 配色と描画
+
+TextWidgetの補完候補コールバックは生成元の候補窓を弱参照で識別し、その窓が現在の候補である間だけEnter／Tabを処理します。差替え・空候補化・自動確定で失効した候補のEnter／Tabは消費して終了し、文書・Undo・現行候補を変更しません。旧窓は従来どおり50ms遅延破棄し、修飾キー付き入力や他キーの返却は維持します。
+
+TextWidgetの共有色はupdateColorでクラス属性へ順に設定し、paintで参照します。初期値なしのClassVar宣言により、更新前の属性不在を維持します。getColorから直接保持する22色はNoneを含み、計算後のcolor_select_bg_inactiveだけがRGBです。取得順・成分値・更新途中の代入を保ち、失敗時に既存の非アクティブ色を消したり、一括交換・既定色の補完を行ったりしません。
+
+画像テーマ・壁紙とPillow依存を廃止し、themes/<名前>.iniの配色を使用します。配布はblack/white/grayを同梱します。選択済みchoice色とフォーカス中select色を区別し、キャレット色はPATINVERTのXORマスクとして扱います。通常の文字色の比較だけでキャレットの可視性を判定しません。
+
+不透明な単色背景のConfigとコマンド一覧だけでopaque_normalを有効にし、通常項目へ実背景色を指定して既存のRGB保持経路を使います。背景なし経路の緑成分からの単一アルファ化で失われるRGBを保持するためです。既定False、履歴・フォントプレビュー・選択行・ステータス・透過描画・フォント品質・描画タイマーは維持します。下層Planeやグラデーションのある任意の独自拡張へ一律適用しません。小サイズの全字形の読みやすさや表示遅延を保証する変更ではありません。
+
+削除APIはcreateThemeImage、createThemeImage3x3、ThemePlane、ThemePlane3x3、Wallpaperと画像背景用bg_margin・画像レイヤー管理です。これらを使う外部拡張は修正が必要です。Pillow非依存のckitcore.Image/ImagePlane、ColorWidgetの単色描画、pyautoの画像取得API、アイコンと文書画像は保持します。
+
+TextWidget.modifyTextは通常編集でNone本文を挿入なしとして受け入れます。UndoInfoの初期本文Noneと、通常編集で保存したNoneを維持します。矩形編集ではsplitlines位置のAttributeErrorを内容・name・objとともに維持し、読取専用の先行判定やUndo／Redoのリスト移動・通知順を変えません。
+
+同じDocumentを共有する別TextWidgetの選択端点は、変更範囲前なら維持、範囲内（終端を除く）なら通知先ビューが所有するPointで変更始点へ移します。これにより後続の上下移動が変更元のideal_columnを参照することを防ぎます。旧終端以降では、旧終了行上の端点だけに新旧終端の文字位置差を反映し、それより下の行は行番号差だけを反映します。変更元はこの通知補正を受けず、modifyTextとUndo／Redoの既存の選択復元に従います。Pointの構築とsetSelectionは位置をクランプせず、Selectionが端点の昇順・方向を正規化します。setCursorの行末超過クランプと矩形選択の仮想列は維持します。
+
+TextWidget.filterLinesは選択範囲に含まれる各行の本文全体と、その時点のbookmark／modifiedを持つ可変なLineInfoをコールバックへ渡します。右端が行頭ならその行を含めず、行内なら行末まで扱います。行頭から行番号で走査し、カーソル移動用のideal_columnには依存しません。削除は既存のmodifyTextに委譲し、実際に減った行数で終端を補正して文書末尾に収めます。最終行の本文だけが消えた場合や、読取専用で削除されない場合も同じ行を再処理しません。変更は1つのUndo単位とし、正常終了時は既存の通知・選択更新・描画順を維持します。コールバック例外ではUndo単位を閉じて元の例外を返し、処理済みの削除を巻き戻したり正常終了の通知を追加したりしません。
+
+本体では未使用のTextWidgetが使うネイティブLineは、Python 3.15対応のU形式で文字列を受け取り、PyUnicode_AsWideCharStringと既存の_Line_CheckLineEndで末尾の改行を判定します。本文はPyUnicode_FromWideCharで生成し、一時バッファは成功・失敗ともにPyMem_Freeで解放します。変換失敗時は例外を返して既存属性を保持し、再初期化成功時は旧本文・ctx・tokensの参照を解放して属性を初期値へ戻します。描画回帰検査もネイティブLineを使用しますが、TextWidget全体の実機動作保証ではありません。
+
+ckit/ckitcore.pyiとpyauto/pyautocore.pyiは、パッケージ修飾名のネイティブ拡張をlib/直下の同名バイナリへ静的に対応付けます。Pyright／Pylanceが同名のC++ソース用ディレクトリを空のPythonモジュールとして解釈することを防ぎます。公開名だけを再公開し、実行時のimport・設定・処理は変更しません。ColorWidgetの色選択はclnch_native.chooseColorを呼び、確定時だけ色を更新し、色表は取消時も戻り値を保持します。
+
+計測処理を持たなかった-p指定とMainWindowのprofile引数・属性、空のsetGlobalOptionとGLOBAL_OPTION_XXXXは廃止しています。HugeFileの試験はtools/で行い、製品モジュールの読込みから独立させます。
+
+ckitcore.TextPlaneはsetFont前のgetFontでNoneを返します。この状態では描画をスキップし、フォントを必要とするputString・scroll・getCharSize・charToScreen・charToClient・getStringWidth・getStringColumns・setCaretPositionはValueError（font is not set.）を返します。setFont後はPlane全体を無効化して通常の描画・計測へ移り、未設定時の操作を予約・再実行しません。
+
+ckitcore.Fontの名前は31 UTF-16単位までとし、過長名・組込みNULをValueErrorで拒否します。空名・0／負サイズ・負paddingの従来解釈を維持し、サイズ符号反転とセル高さの整数範囲を検査します。GDI生成・DC取得・選択・計測の失敗はRuntimeError、メモリ確保失敗はMemoryErrorとし、取得済み資源を解放します。再初期化は成功後だけ旧Fontを置換し、失敗したFontを公開しません。
+
+MainWindowはTextWindowの構築後、ConsoleWindowを生成してから保存位置へ移動し、実際のDPIを再確認します。推定と違えば、初回表示前にupdateFontで両ウィンドウを補正します。構築中のDPI通知はinitializedで保留し、この明示的な再確認で反映します。初期化後のDPI・画面構成・作業領域通知と設定変更は従来のupdateFontを使い、メインの中心・上端を基準にサイズを補正します。ConsoleWindowは生成時も自身のDPIでフォントと作業領域を調整し、親とは異なるモニターの倍率を独立して使います。標準入出力の登録時期は変えません。
+
+TextPlane.putStringは非正の幅・高さ、空文字列、負の開始座標、Planeの完全なセル範囲外を無操作とします。開始位置・終端・offsetの加算とピクセル変換は64bitで行い、描画領域とPlaneのセル範囲の交差にだけ遅延確保します。Plane外への書込みを将来の拡大表示用に保持しません。倍幅文字の片側だけが端にかかる場合は属性付き空白にし、負offsetによる水平スクロールを維持します。PutCharは負位置と現在の行末を越える飛び越し書込みを拒否し、呼出し側が必要な隙間を空白で準備します。公開入口はUTF-16バッファを直接取得して全経路で解放し、中間wstringを複製しません。更新矩形のint範囲超過はOverflowError、文字バッファの確保失敗はMemoryErrorです。公開の位置引数・キーワード引数と、フォント未設定／破棄済みのValueErrorを維持します。
+
+TextPlane.getStringColumnsはPyUnicode_AsWideCharStringでNULを拒否したUTF-16バッファを直接使い、中間wstringの未捕捉確保例外を避けます。UTF-16長がINT_MAX以上なら列配列確保前にOverflowErrorとし、長さ+1のint配列はnothrowで確保します。Unicode変換・配列・tuple・整数要素の確保失敗はMemoryErrorで復帰し、途中tupleの所有参照と取得済みバッファだけを解放します。getStringWidthと共通の計測器は64bit整数で加算してC int上限超過を検出し、両APIともOverflowErrorにします。通常の相対セル幅・タブoffset・UTF-16単位の位置とサロゲートの扱いは維持します。巨大な実文字列を確保せずに長さ境界を検査する方法は[検証手順](release-verification.md)を参照してください。
+
+## ステータス表示
+
+独自ステータス層の描画・タイマーはclnch_statusbar.pyの内部_CustomStatusBarLayerが担当します。MainWindowは公開の登録／解除API、funcから層への対応表、メッセージと時計の表示調停を保持します。層はMainWindowをimportせず、渡されたウィンドウと描画フラグを使います。入力中や最前の層でない場合はタイマーによる描画を行いません。setStatusMessageは新しい表示ごとに旧タイマーを解除し、timeout=Noneは期限なしとします。clearStatusMessageは未表示時や繰返し呼出しでも安全に解除します。
+
+## ヘルプとコンソール
+
+F1は現在適用中の言語でアプリ側docs/ja/index.htmlまたはdocs/en/index.htmlを開き、設定保存先がAppDataでも変わりません。ファイル確認とOS起動はジョブで行い、成功・未配置・アクセス失敗・通常ファイル以外・起動失敗を区別して通知します。自動ダウンロードは行わず、OS受付後のブラウザー表示完了も検出しません。
+
+成功ログは閉じたコンソールを新しく開かず、既存の別エラー表示要求を取り消しません。未配置・失敗は案内します。Ctrl+F10で開閉し、内部のウィンドウ間移動と別アプリへの移動を区別します。
+
+ログは元の最大1000論理行を保持して表示行へ折り返します。LFを論理行境界とし、直前のCRを1文字だけCRLFの一部として除きます。分割writeでも同じ判定を行い、単独CRは本文に保持します。コピー時は論理行境界をCRLFで結合します。スクロールは表示行、選択・コピーは元の論理文字列を基準にし、折返しの改行をコピーに追加しません。位置・操作案内は選択対象外です。詳細操作は[操作一覧](../docs/ja/commands.md#コンソール)を参照してください。
+
+clnch_consolelog.pyのLogが原文・改行終端・更新番号・先頭論理行番号を所有し、ConsoleWindowがそのLogを1つ保持します。従来のclnch_consolewindow.Logも同じクラスを公開します。Log.snapshotはロック内で原文と更新番号を取得し、GUIや幅計測中はロックを保持しません。
+
+同モジュールの内部_LogLayoutは、スナップショットの原文と表示行の対応を生成します。幅計測は呼出し側から渡し、GUI・Windows APIに依存しません。幅とログが同じ場合、変更されない先頭部分と折返し範囲を再利用します。構築中の失敗は以前の結果を変更しません。これは表示用の派生キャッシュであり、ログの追加・削除や選択状態を所有しません。
+
+ConsoleWindow._getRowsは表示結果と案内領域を準備し、_syncLogViewが以前の表示結果を基に末尾追従・読書位置・削除行数に応じた選択／ドラッグ始点を補正します。描画・ヒットテスト・選択文字列は同じ表示スナップショットの原文を使い、途中で更新されたLogと混在させません。コピー直前にも更新を反映し、クリア時はドラッグのマウス捕捉を解放します。サイズ変更は表示結果を再利用または再配置し、フォント・DPI変更は折返しを無効化して読書位置を移します。GUIイベント・表示意図・親との可視性同期・標準入出力・ウィンドウ寿命はConsoleWindowに残します。
+
+## ジョブ・定期処理と公開API
+
+JobItemのargs、help_message、help_openedは初期値なしの条件付き属性です。共通コンストラクターはこれらを生成せず、Shell／URLコマンドはinfo.argsと同じオブジェクトを代入し、ワーカー実行時にjob_item.argsを参照します。Shellジョブはinfo.arg_stringも投入時に保持し、非Noneなら引数原文として使用します。runasのWindowsエラー1223（UAC取消）は通知せず終了し、他の起動失敗は既存のコンソール通知を維持します。ヘルプ処理はenqueue前にNone／Falseを代入し、ワーカーが更新した状態を完了通知で再取得します。他ジョブの属性不在、実行時クラスと生成入口を維持し、専用サブクラスや一律の初期値へ置き換えません。
+
+JobQueue.defaultQueue()は生成前にNoneを返します。本体の投入経路は取得済みのキューをclnch_misc._require_job_queueへ渡し、未生成時は従来のAttributeErrorの本文・name・objを維持します。自動生成・投入省略・キャッシュは行いません。Alt+Enterはキュー取得後にJobItemを生成し、他の5経路はJobItem生成後に取得する順序を保ちます。
+
+JobQueueの完了通知はcheck()/join()の呼出し元で実行され、常にワーカースレッドとは限りません。アプリの呼出し経路とAPI単体の契約を区別します。
+
+JobQueueはcheck()が先頭ジョブを開始し、ワーカーが逐次実行します。pause()はキューと登録済みジョブへ停止を要求し、実行中ならwaitPaused()での停止か処理終了を待ちます。未開始・完了済みジョブのためには待たず、完了通知も行いません。cancel()は未開始の実行を抑止し、実行中の関数にはisCanceled()による協調的終了を要求します。キューの停止ゲートで待つジョブも、キャンセル後は実行せず完了状態へ進みます。join()は停止を解除して登録済みジョブと完了通知を処理した後、キュースレッドを終了します。join()自体はキャンセルを要求せず、実行中の処理を強制終了しません。
+
+CronItem.cancel()は未開始の呼出しを止めますが、開始直前の確認を通過した回は実行され得ます。実行中の関数はisCanceled()を確認して終了します。CronTableは関数実行中に登録一覧ロックを保持しません。remove/clearは登録解除、cancelは終了要求、joinは終了要求と待機を行い、join開始後のaddは失敗します。destroyは管理対象から外す処理で、join後に呼びます。
+
+ckit・pyauto・clnchの再公開名と初期化順は、外部設定から利用される公開APIの一部です。
+
+SyncCallは要求ごとに関数・引数・結果・例外・Eventを所有し、標準queue.QueueのFIFOで受け付けます。生成元スレッドのcheckはロックを保持せず1要求だけ実行し、BaseExceptionでもfinallyで待機を解除して、同じ例外・原因・元のトレースバックを呼出し元へ返します。生成元からの呼出しは直接実行し、checkが実行されない場合の待機は継続します。
+
+SubProcessはキャンセル要求とPopen結果の公開を短いロックで同期し、生成前・生成中の要求を生成直後に処理します。同時・再入要求は集約し、送信完了後の再要求は許します。Popen・出力読取・WM_CLOSE送信中は状態ロックを保持しません。終了済みには送信せず、最初の対象ウィンドウへのベストエフォートの終了要求とし、強制終了・終了待ち・子孫への要求は行いません。出力コールバック後も公開プロセスを再参照する既存契約を維持します。
+
+stdoutのreadline()がb''を返したらEOFとして通知を止め、子が実行中でもpoll/readの反復へ戻らずwait()で最終終了コードを待ちます。パイプが開いたまま出力がない場合のブロッキング読取りは維持します。__call__が生成したPopenのstdin/stdoutを所有し、正常終了・読取り／復号／通知／終了要求の例外・中断でも両方を明示的に閉じます。コールバックが公開pを差し替えた場合も、借用した差替え先のストリームは閉じません。例外は保持して後始末を続け、子の強制終了や無期限の終了待ちは追加しません。EOF後のwait中もcancelは既存の終了要求だけを送ります。
+
+getClipboardText/setClipboardTextは専用WinDLLの関数参照にポインタ幅の引数・戻り値型を一度だけ設定し、ctypes.windllの共有GlobalLockの型を変更しません。取得と設定の処理全体を同じ再入ロックで直列化し、並行したGetClipboardData等によるプロセス内の競合を防ぎます。CF_UNICODETEXTはNUL終端UTF-16の実バッファーサイズで転送し、補助平面文字を保持します。取得ではOS所有メモリをPython文字列へコピーしてUnlockし、Freeしません。設定では確保したメモリをLock失敗・Open失敗・Empty失敗・Set失敗・例外時にFreeし、Set成功後だけOSへ所有権を移します。成功したLock/OpenはUnlock/Closeし、API失敗時の空文字／None返却とPython例外の伝播を維持します。Empty成功後のSet失敗では元のクリップボード内容を復元しません。
+
+## ネイティブWindowの生成と破棄
+
+WindowのC++コンストラクターは初期値・コールバック参照・描画資源を準備し、Pythonの初期化処理がWin32窓を生成します。生成中は初期化処理がC++本体を所有し、WM_DESTROYはHWNDと所有Planeを無効化しても本体を削除しません。CreateWindowExと初回表示が成功した後にPythonラッパーを接続し、従来どおり窓がラッパーを保持します。以後は明示destroy・OS側の破棄ともWM_DESTROYがラッパーと所有Planeを直ちに無効化し、ユーザーデータを外してタイマー・ホットキーを解除します。Window::Referenceが実行中のWndProcと、Python呼出しや同期通知後にも本体へ戻る処理を保持し、生成中でなくHWNDが失効した本体は最後の参照が戻った時に1回だけ削除します。コールバックのリストとイテレーターもその時点まで生存し、デストラクターがコールバック、描画資源、保持したラッパー参照を解放します。破棄したラッパーを外側の通知が戻る前に再初期化しても、旧本体の解放は新本体の接続を無効化しません。
+
+Window.clearは削除するPlaneを所有リストから先に外し、最終化子からのclear・他Planeのdestroy・新しいPlaneの生成を許して残る所有Planeを順次処理します。公開clearはWindow::Referenceを保持し、PlaneのPythonラッパー最終化子がWindowをdestroyしても外側のclearとPlaneデストラクターが戻るまで本体を解放しません。
+
+TaskTrayIconも実行中のWndProcとpopupMenuでネイティブ参照を保持します。WM_DESTROYはラッパーとHWNDを直ちに無効化して通知アイコン・再試行タイマーを解除し、最後の処理が戻った時に本体・コールバック・所有アイコンハンドルを解放します。メニュー参照は一覧から切り離して解放し、sequenceの長さ／要素取得・要素最終化・同期Win32呼出し後に破棄状態を再確認します。構築中の破棄はValueError、選択コールバック中の破棄は通常復帰とし、旧本体の解放は再初期化したラッパーを無効化しません。
+
+TaskTrayIcon.popupMenuは本体ごとの実行状態を引数変換より前に設定し、同じ本体への再入をValueErrorで拒否します。共有コマンド表の項目IDと参照を外側の呼出しが管理し、旧コマンドの最終化・項目取得・CommandInfo生成・選択処理でも置換を許しません。正常終了・取消・例外のすべてで状態を解除してからネイティブ参照を戻します。別アイコンの操作と、破棄後に再初期化した新しい本体の操作は独立しています。コマンド参照は従来どおり次のpopupMenuによる置換または本体破棄まで保持し、WM_COMMANDは実行する関数を追加で保持します。
+
+生存中のTaskTrayIcon.__init__は資源生成・引数解析前にValueErrorで拒否し、元のHWND・ハンドラ・コマンド参照を保ちます。destroy完了後は再初期化できます。生成中は初期化処理が本体を所有し、WM_DESTROYでは削除しません。SetProp失敗・生成後の破棄も初期化失敗として取得済み資源を解放し、元のPython例外を保持します。WM_DESTROYとデストラクターは本体とラッパーの接続が一致するときだけラッパーを無効化します。
+
+破棄済み／未初期化のWindowを親に指定するとValueErrorです。整数HWNDは借用値としてWin32へ渡し、有効性と所有者としての受入れはOSが判断します。明示Noneは従来どおりTypeErrorです。Win32生成失敗は直後のGetLastErrorをDPIコンテキスト復元前に保存してOSErrorへ渡し、エラー0にはERROR_GEN_FAILUREを使います。取得済み資源は初期化側で1回だけ解放し、tp_initは-1を返します。初回表示のコールバックによるOS破棄も成功扱いにしません。
+
+明示destroy中はラッパーを一時無効化してコールバックを抑止します。破棄後の追加メッセージはPythonへ配送せず、実行中の遅延呼出し列・移動からサイズへの通知・メニュー構築も後続コールバックを抑止します。messageLoopの継続条件から破棄した場合は再待機せず終了します。失敗時はラッパーを戻してOSErrorを返し、ネイティブ窓・コールバックは再試行まで保持します。TextWindow等が先に解放した部品の復元や、任意のメモリ枯渇からの回復を保証する契約ではありません。Window本体のnew失敗はMemoryErrorに変換しますが、Debug STLのnoexcept内部の確保失敗等は別の制約です。
+
+## ネイティブAPIの個別境界
+
+### 画像とPlaneの構築
+
+pyautoのImageはRGBバイト数を乗算前にPy_ssize_t上限で検査し、非正寸法は空画像へ揃える。Window.getImageはBITMAPの寸法・stride・planesとGetBitmapBitsのLONG上限・全量取得を検査し、失敗をPython例外へ返す。選択状態を復元してDCを先に破棄し、確保済みバッファ・Python参照・GDI資源を解放する。画像オフセットはsize_tで計算する。現行APIはpyautocore.cppの日英ページ、失敗注入・実GDIの検査範囲は[検証手順](release-verification.md)を正とする。
+
+ImageはfromBytesまたはPlaneのgetImageで有効なネイティブ実体を持つラッパーを取得する。Image専用tp_newは直接生成と未初期化ラッパーの生成をTypeErrorで拒否し、派生型からのobject.__new__による迂回も許さない。fromBytesによる(0, 0)の空画像と、共有画像の参照所有・描画は維持する。
+
+TextPlane／ImagePlaneの構築入口はWindow_Checkと内部ポインターを検査し、誤型・NoneをTypeError、未初期化／破棄済みWindowをValueErrorで生成前に拒否する。setFont／setImageも既存の型チェックで誤型・Noneを拒否し、正常な派生型の受入れ、WindowによるPlane所有、Image／Fontのネイティブ参照所有と描画順を維持する。
+
+### 文字列・描画と所有資源
+
+SelectObjectで得た元のGDIオブジェクトを同じDCへ戻してから、所有するブラシ／ペンを削除する。借用Font・ストック資源は削除しない。オフスクリーンDCをDeleteDCしてから所有ビットマップを解放する。描画座標・色・アルファ・キャッシュ・dirty処理を維持する。
+
+TextPlane.scrollは公開入口で非負の座標・寸法・移動先と、セル終端・ピクセル乗算・Plane位置加算のint範囲を検査する。不正範囲はValueError、桁あふれはOverflowError、確保失敗はMemoryErrorとし、ゼロ寸法・ゼロ移動は無操作。文字バッファは移動元と先の両終端まで確保し、従来のコピー順序・縦移動時の行単位コピー・露出部分の利用側再描画を維持する。回帰は隔離子プロセスの実PYDと、スクロール直後およびバッファ再描画後の画素で確認する。
+
+ckit・pyauto・clnch_nativeの共有文字列変換は、未使用のPyStringToStringも含め、Python C APIの長さNULL指定で埋め込みNULをValueErrorにし、失敗時はOS操作へ進まない。下層のstrutilは明示長バッファとして変換結果の長さを使い、NULと後方データを保持する。pyautoの非strをNULL扱いにする既存契約、Line・長さ付きIPC／バイト列の保持は区別する。Hook属性名もNULを拒否し、MenuNodeは構築時の文字列拒否でも未生成ポインターを解放しない。
+
+ネイティブ境界はハンドルをポインタ幅、長さを対応するPython／Win32型で扱い、GIL再取得前にWin32エラーを保存する。途中失敗は取得済み参照・COM／Shell／GDI／NetAPI資源を解放し元の例外を保つ。ラッパーは所有参照解放前に無効化して再入を拒否する。COM Releaseは参照数のローカル値を返し、最終delete後のthisを読まない。
+
+### 通知・入力配送とフック
+
+TaskTrayIconのtitleは127 UTF-16コード単位を上限とし、超過はOS操作前にValueError。受信窓の生成失敗はOSErrorで保持参照を解放し、通知登録へ進まない。通知領域への登録のエラー0／タイムアウトは、UIメッセージループの1秒タイマーで登録済み確認と再試行を行い、構築・Explorer再起動通知の処理内で待ち続けない。破棄時は保留タイマーと既存の所有参照を解除する。
+
+コールバックの整数結果はC int解析成功時だけ使い、失敗は表示・クリアして既定動作へ戻す。WM_COPYDATAは正確な長さのUTF-8 str契約を保ち、不正入力・ハンドラー失敗をFALSEで拒否して次へ復帰する。enumShareはstr変換・結果リスト生成成功後だけ列挙を始める。pyautoのHWND索引は非所有で、取得ヘルパーの新規参照は呼出し側が解放する。Input.sendの送信前失敗は参照・配列を解放する。
+
+修飾キーはGetKeyStateの最上位ビットで判定し、Alt／Ctrl／Shift／左右Windowsキーの既存割当てを維持する。WM_DROPFILESはDragQueryFileWでUTF-16長を問い合わせ、終端込みの動的バッファから全パスを取得する。空名・不完全な取得・Python変換／リスト構築失敗はドロップ全体を破棄して通知し、DragFinishと所有参照を解放する。GetClassNameの固定容量と取得長に基づく変換は維持する。Window.dragはPostMessage／WM_NCLBUTTONDOWN／HTCAPTIONとMAKELPARAMの各軸16bit格納を使い、符号付き16bit座標の制約がある。
+
+pyauto.Hookはプロセス内で有効な所有者1つだけが全監視・受信窓・9参照を終了し、実行中callbackは復帰まで参照を保つ。destroyは繰返し可能、破棄後の設定／resetはValueError。マウス座標は仮想デスクトップの画面ピクセル、ホイールは移動しない。外部IME照会は指定HWND内のUIAフォーカス子孫を優先し、存在しない場合だけHWND自身へ戻る。非空変換範囲だけTrue、空範囲False、非対応Noneと失敗／期限を区別し、期限切れワーカーを蓄積しない。
+
+### 引数取得・ファイル操作
+
+getArgvはCommandLineToArgvWの成功バッファをコピー後・例外時ともLocalFreeで解放し、全取得成功後だけsys.argv相当の同一可変リストをキャッシュする。NULLはWinErrorを送出し、失敗はキャッシュしない。FileReaderLockの取得失敗は余分な出力なしでWinErrorを呼出し元へ伝播する。
+
+HugeTextFileはmmap直接の64 KiB遅延走査で行境界をキャッシュし、UTF-16のCR/LFは開始offset基準の2バイト境界で判定する。マッピングだけを所有し、元ファイルは呼出し元が閉じる。setFileTimeは検証・変換を変更前に済ませ、失敗後もハンドル解放・属性復元を試み最初のWinErrorを保つ。
+
+## 公開状態と型宣言の境界
+
+型宣言は、公開None・条件付き属性の不在・オブジェクト同一性・取得や評価の順序を表すために使います。None時の処理省略やダミー値、公開戻り値の一律変換は追加しません。LineInfoのbookmark／modifiedは呼出しごとのローカルクラスの行別スナップショット、MouseInfoのleft／right／lineは選択モード別の属性として保持します。TextWidget.closeListの遅延処理は旧候補を強参照し、50ms後の配送時に属性とdestroyを取得し、遅延登録成功後だけWidget側の参照を解除します。
+
+通常INIのiniとテーマのiniは未初期化時のNoneを維持し、ckit.iniの再公開も変えません。clnch_ini._get_parserは各参照時にパーサーを取得し、未初期化時は従来と同じ本文・name・objのAttributeErrorを送出します。getColorは取得例外を通知して黒へ戻す一方、不正な色文字列ではNoneを返し、成分値を補正しません。RGB演算の境界だけでNoneを既存のTypeErrorとし、前景・背景等の取得と部分代入の順序を維持します。
+
+dataPathの公開getter／setterは初期Noneと値の同一性を保持します。本体は各利用点で取得した値を_require_data_pathへ渡し、変換せず、Noneだけを従来のTypeErrorとします。joinとabspathの例外文、起動時の取得・ディレクトリ作成・sys.path追加の順序、clnch_cmdeditor.JSON_PATHのimport時固定を維持します。getAppExePathの開発用sys属性はhasattrで存在を確認してから直接参照し、動的属性の取得回数・途中消失時の例外情報を変えません。
+
+TextWidgetは初期化時に空のDocumentを選択状態より先に確保し、初回通知登録と公開setDocumentによる差替えを分けます。完成状態のdocはDocumentであり、modcountとatomic_undoは実際のNoneを含む保持型を使います。Documentのmode／lexerは読込み・大容量判定後のsetModeで保持し、読込み前の仮のNone代入は行いません。完成後の再読込みは既存モードを保持します。可変状態の絞込みは操作直前の取得済みの値に対して行い、Undoのcopy後や描画コールバック後などに必要な再取得を固定参照へ変えません。
+
+## 文書と配布の境界
+
+利用者向け仕様はdocs/、現行開発説明はdeveloper/を正本とし、API説明はソースに併記します。文書生成の設定・資材は現位置を維持します。詳しい生成・APIコメント規則は[文書生成環境](../tools/README-docs.md)、画像命名規則は[開発手順](development.md#ドキュメント生成)を参照してください。
+
+配布対象の正本は[makefile.py](../makefile.py)のCOPY_ITEMSで、同じmakefile.pyがRelease Rebuild・コンパイル・文書生成・配布収集・archiveを制御します。個人設定・開発ツール・試験ログを同梱しません。ヘルプはUIと同じ言語で本体ZIPへ同梱し、独立ヘルプZIPは作りません。

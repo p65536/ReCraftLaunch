@@ -1,0 +1,206 @@
+/* Documentation layout additions; all colors follow the Doxygen theme. */
+#projectlogo img {
+  width: 48px;
+  height: 48px;
+}
+
+.rst-content img {
+  max-width: 100%;
+  height: auto;
+}
+
+.rst-content .toc-backref {
+  color: inherit;
+  text-decoration: none;
+}
+
+.rst-content .contents.topic {
+  margin: 1em 0;
+  padding: 0.75em 1em;
+  background: var(--toc-background-color);
+  border: 1px solid var(--toc-border-color);
+}
+
+.rst-content .topic-title {
+  margin-top: 0;
+  font-weight: bold;
+}
+
+.rst-content .auto-toc {
+  list-style: none;
+}
+
+.rst-content table.docinfo,
+.rst-content table.docutils {
+  margin: 1em 0;
+  border-collapse: collapse;
+}
+
+.rst-content table.docinfo th,
+.rst-content table.docinfo td,
+.rst-content table.docutils th,
+.rst-content table.docutils td {
+  padding: 0.3em 0.6em;
+  vertical-align: top;
+  text-align: left;
+}
+
+.rst-content table.docinfo th {
+  padding-left: 0;
+  white-space: nowrap;
+}
+
+.rst-content table.docutils th,
+.rst-content table.docutils td {
+  border: 1px solid var(--table-cell-border-color);
+}
+
+.rst-content table.docutils th {
+  background: var(--table-header-background-color);
+  color: var(--table-header-foreground-color);
+}
+
+.rst-content pre.literal-block,
+.rst-content pre.doctest-block,
+.rst-content .highlight {
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  background: var(--fragment-background-color);
+  color: var(--fragment-foreground-color);
+  border: 1px solid var(--fragment-border-color);
+  font-family: var(--font-family-monospace);
+}
+
+.rst-content .highlight pre {
+  margin: 0;
+}
+
+.rst-content .highlight [class^="k"] {
+  color: var(--code-keyword-color);
+}
+
+.rst-content .highlight [class^="c"] {
+  color: var(--code-comment-color);
+}
+
+.rst-content .highlight [class^="s"] {
+  color: var(--code-string-literal-color);
+}
+
+.rst-content .highlight [class^="m"] {
+  color: var(--code-vhdl-digit-color);
+}
+
+.rst-content .highlight :is(.nb, .bp) {
+  color: var(--code-type-keyword-color);
+}
+
+.rst-content .highlight .err {
+  color: var(--warning-color-text);
+  background: var(--warning-color-bg);
+}
+
+/* Inline literals and keycaps */
+.rst-content tt.docutils.literal {
+  padding: 0.15em 0.4em;
+  margin: 0 0.1em;
+  background: var(--fragment-background-color);
+  color: var(--fragment-foreground-color);
+  border: 1px solid var(--fragment-border-color);
+  border-radius: 4px;
+  font-family: var(--font-family-monospace);
+  font-size: 0.9em;
+}
+
+.rst-content tt.kbd.docutils.literal {
+  display: inline-block;
+  padding: 0.15em 0.5em;
+  margin: 0 0.15em;
+  background: var(--header-background-color);
+  color: var(--page-foreground-color);
+  border: 1px solid var(--header-separator-color);
+  border-bottom: 2px solid var(--group-header-color);
+  border-radius: 4px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+  font-family: inherit;
+  font-size: 0.88em;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Admonitions (callout boxes) */
+.rst-content .admonition {
+  margin: 1.2em 0;
+  padding: 0.8em 1.2em;
+  border-left: 5px solid var(--blockquote-border-color);
+  border-radius: 4px;
+  background: var(--blockquote-background-color);
+}
+
+.rst-content .admonition .admonition-title {
+  margin-top: 0;
+  margin-bottom: 0.4em;
+  font-weight: bold;
+  font-size: 1.05em;
+}
+
+.rst-content .admonition.tip {
+  border-left-color: var(--todo-color-hl);
+  background: var(--todo-color-bg);
+  color: var(--todo-color-text);
+}
+
+.rst-content .admonition.tip .admonition-title {
+  color: var(--todo-color-hl);
+}
+
+.rst-content .admonition.note {
+  border-left-color: var(--note-color-hl);
+  background: var(--note-color-bg);
+  color: var(--note-color-text);
+}
+
+.rst-content .admonition.note .admonition-title {
+  color: var(--note-color-hl);
+}
+
+.rst-content .admonition.warning {
+  border-left-color: var(--warning-color-hl);
+  background: var(--warning-color-bg);
+  color: var(--warning-color-text);
+}
+
+.rst-content .admonition.warning .admonition-title {
+  color: var(--warning-color-hl);
+}
+
+/* Figures and screenshots */
+.rst-content .figure {
+  margin: 1.5em 0;
+  text-align: left;
+}
+
+.rst-content .figure img {
+  display: block;
+  border: 1px solid var(--header-separator-color);
+  border-radius: 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  margin-bottom: 0.4em;
+}
+
+.rst-content .figure .caption {
+  font-size: 0.9em;
+  color: var(--memdecl-foreground-color);
+  margin-top: 0.3em;
+}
+
+/* Table zebra striping */
+.rst-content table.docutils tr:nth-child(even) td {
+  background: var(--index-odd-item-bg-color);
+}
+
+/* Step list spacing */
+.rst-content ol.arabic > li {
+  margin-bottom: 0.5em;
+}

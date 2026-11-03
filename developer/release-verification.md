@@ -1,0 +1,712 @@
+# ReCraftLaunchの配布版確認手順
+
+配布版の自動検証とWindows実機での確認手順を説明します。
+
+ビルド・言語・配布の手順は[開発環境](development.md)、期待する内部動作は[アーキテクチャ](architecture.md)、利用操作は[コマンドリファレンス](../docs/ja/commands.md)を参照してください。
+
+変更対象ごとのビルド・文書生成・パッケージ更新の選択は[変更内容別の手順](build-workflow.md)を参照してください。
+
+## 検証の前提と結果の記録
+
+- 対象のソース版・言語・配布資材を特定する。MSBuildだけではPythonの変更はlibrary.zipへ反映されない。
+- 常用環境から分けた確認用コピーと設定を使う。他のReCraftLaunchを終了する。別フォルダのexeでも既存インスタンスへIPCが届く。
+- アプリフォルダ保存を既定とする。AppData保存は通常実行と同じデータを使うため、保存先の試験では既存設定を上書きしない。
+- 自動・隔離・非表示ネイティブ検査と、実際のGUI・物理キー・マウス・ブラウザー・IPC・IME確認を分けて記録する。
+- 実施日、対象版、環境、手順、結果、未確認範囲を記録する。
+- 自動化できる客観的な条件は自動検証へ割り当てる。人力確認は目視・操作感、実際のIME変換操作、UACの承認など、人の判断や操作が必要な部分に絞る。環境の権限制限で実行できない検査は未完了の自動検証として記録し、手動専用へ分類し直さない。
+- 人力確認を選ぶ前に、既存の単体・ネイティブ統合・配布検査の結果と照合する。人力確認は、自動検証では評価できない操作感・可視品質・実IME等の条件を対象にする。
+- 検証済みの結果は、対象ソース・生成物・環境条件が一致する範囲で再利用できる。変更がある場合は影響範囲を検証し、再利用した結果と今回実施した結果を区別して記録する。
+
+## `_ra`の関連付けとShell起動フラグ
+
+`tools/test_runas_association.py`は関連付けAPI・静的コマンド・固定引数・文書プレースホルダー・引用符・日本語／空白・追加引数原文、JSON／別名／マクロ／WorkDir／ViewMode、未関連付け・DDE／DelegateExecute／DropTarget／AppUserModelID・未知形式の拒否、1223と他の失敗を検査する。API応答とShell起動は必要箇所で代替し、実AssocQueryStringWによるインストール済みの.txt設定と存在しない拡張子の照会も行う。レジストリや既定アプリは変更しない。既存のtest_argument_strings.py・test_json_commands.py・test_command_platform.pyも併用する。
+
+`check_standard_windows.py test_native_ra_document_static_association_reaches_child test_native_raw_argument_strings_reach_shell_and_child test_shell_placeholder_and_child_context_defaults test_dynamic_arguments_reach_child_unchanged`はDebug／Releaseの実入力・JobQueue・Shell・子プロセスを使う。追加の文書検査は関連付け文字列をテスト用Win32コマンドに、runasを非昇格起動に置き換え、固定引数と文書・空引数・原文・WorkDir・ViewModeを照合する。UAC承認・実昇格の証拠にはしない。
+
+`tools/test_native_shellexecute.py`はDebug／Release、最終配布は`--package dist/ReCraftLaunch`で実行する。実PYDのIATでShellExecuteExを捕捉し、メッセージループのないスレッドでEXE・文書・URLとopen／runas／既定verb、表示状態、フラグ0x50cを検査する。GIL再取得時にエラーを上書きするネイティブthunkで2／5／1223の保持も確認する。実EXE子プロセスの待機解除を親から制御し、APIの復帰がプロセス終了を待たないことを照合する。
+
+同検査の文書・URLは固有の一時Shellクラスと呼出し限定のCLASSKEYを使い、実Shellによるコマンド展開・子プロセスの文書読取りとURL引渡しを検査する。既定関連付けは変更せず、一時レジストリキーとプロセスハンドルを解放する。試験用HKCUキーの作成・削除権限が必要である。最終配布の関連付け・引数検査には`test_runas_association.py --package dist/ReCraftLaunch`と`test_argument_strings.py --package dist/ReCraftLaunch`を使う。
+
+実昇格と文書表示の確認では、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーへ`Link: _ra`・`Args: Z:\temp\test.txt`を登録して実行し、既定アプリの選択、必要なUAC表示と承認、対象アプリの昇格、対象文書の表示を確かめる。タスクマネージャーの詳細で「昇格」列と対象PIDを確認し、そのプロセスのウィンドウに文書が開いていることを照合する。既存の通常権限アプリへの転送があれば成功としない。アプリ独自の独立起動オプションを使うEXE登録等の代替と、関連付け形式による制約を報告する。UAC取消時の無通知と、日英ヘルプの追加説明の可視読みやすさも確認する。
+
+## 自動検証の選択
+
+変更領域から下表のスクリプトと詳細節を選びます。複数領域を変更した場合は必要な検査を合わせ、同じ検査は重複実行しません。個別テストの全一覧はソースを参照し、通常デスクトップ専用の指定・配布版指定・障害注入の条件と限界は詳細節に従います。
+
+| 変更領域 | 主なスクリプト（tools/） | 詳細 |
+|---|---|---|
+| 入力・引数・登録実行 | test_argument_strings.py、test_json_commands.py、test_mainwindow.py | [入力引数](#入力引数と通常実行)、[パス解決](#パス名前解決と昇格)、[登録](#標準コマンドの登録再構築os検索) |
+| JSON・編集・一覧 | test_command_store.py、test_command_draft.py、test_command_editor.py、test_command_list.py | [JSON検証](#json検証と拡張reload)、[編集・保存](#json編集複製ドロップ)、[一覧](#コマンド一覧の操作寿命)、[編集モデル](#編集データモデル) |
+| INI・設定・Reload | test_ini.py、test_ini_settings.py、test_input_settings.py、test_config_menu.py | [INIと補完](#iniの読込失敗と補完設定)、[INI保存](#通常iniの保存読込)、[Config統合](#モーダルとconfigのwindows統合) |
+| Alt+Enter・修飾・ホットキー | test_altenter_settings.py、test_modifier_settings.py、test_hotkey.py、check_standard_windows.py | [ホットキー](#ホットキーの登録と表示)、[ユーティリティキー](#補完ユーティリティキーと前面遷移)、[修飾操作](#修飾フォルダ操作) |
+| 入力セッション・モーダル・Widget | test_input_session.py、test_modal_lifecycle.py、test_gui_drawing.py、check_standard_windows.py | [入力セッション](#入力セッション一時フック同期ワーカー)、[モーダル](#モーダルとconfigのwindows統合)、[Widget](#widgetの寿命と描画) |
+| 起動・IPC・前面化 | test_native_startup.py、test_ipc_execute.py、test_native_callbacks.py、test_native_pyauto_foreground.py | [起動](#c起動境界)、[IPC配送](#コールバックとipc配送)、[IPC実行](#ipcのコマンド実行)、[前面化](#前面化と参照所有) |
+| Window・Plane・トレイ | test_native_window_lifetime.py、test_native_text_scroll.py、test_native_api_safety.py | [寿命と描画](#plane描画とwindowトレイの寿命)、[表示開始](#表示開始とキャレット) |
+| 文字列・画像・ネイティブ資源 | test_native_strings.py、test_native_pyauto_image.py、test_native_clnch_lifetime.py | [文字列](#ネイティブ文字列と座標)、[画像](#pyautoの画像取得)、[COM寿命](#共有列挙とcom寿命) |
+| Shell・フック・ファイル | test_native_shell.py、test_native_hooks.py、test_misc_resources.py、test_hugefile.py | [Shellとファイル](#shell色選択ファイル操作)、[フック](#入力フックの配送と寿命)、[引数・ロック](#windows引数取得共有読取ロック) |
+| スレッド・ジョブ・子プロセス | test_threadutil.py、test_subprocess.py、test_import_cleanup.py | [JobQueue](#jobqueueの停止終了待ち)、[SyncCall](#synccallの同期要求)、[子プロセス](#サブプロセスとクリップボード) |
+| 文言・API説明・文書生成 | test_strings.py、test_language_startup.py、test_extension_examples.py、check_docs.py | [文言](#文言言語生成処理)、[拡張例](#拡張ガイドの実装例)、[文書と形式](#文書リンクとテキスト形式)、[同梱ヘルプ](#同梱ヘルプ) |
+| ビルド・Python更新・配布 | test_native_build.py、check_package_files.py、check_package.py | [Python更新](#python更新時の検証)、[配布資材](#配布資材の確認) |
+
+### 修飾フォルダ操作
+
+修飾キーのフォルダ操作はtools/test_json_commands.pyで、ジョブ投入前のファイルシステム非参照、受付時の別名・引数・WorkDir・設定の保持、解決／最終存在確認／Shell各段階の例外通知1回と後続起動を検査します。check_standard_windows.pyのtest_native_folder_jobs_keep_input_responsive_and_queue_orderはWindowsの実MainWindow・JobQueueで各段階をEvent待機へ置換し、待機中にも次の入力セッションが操作でき、履歴1件・非強制フォーカス・後続ジョブの順序を保つことを確認します。test_native_target_and_mapped_folders_use_real_os_search・test_real_app_paths_registry_and_os_executionでは実PATH/PATHEXT・App Pathsを照合し、ジョブ完了までShell入口の代替を保持します。直接入力はtools/test_argument_strings.pyで、存在確認後だけの受付・関連付け予約・履歴・入力終了、不在時だけの後続判定、checkNetConnection／findFileの非呼出しを確認します。直接入力の同期存在確認は既知の制約として残し、上記の遅延代替検査を実ネットワークのタイムアウト・認証やExplorerの可視表示の検証とは扱いません。
+
+### メインの閉じる要求
+
+メインの閉じる要求はcheck_standard_windows.pyのtest_native_main_alt_f4_keeps_input・test_native_main_close_restarts_input_without_quitting・test_native_main_close_inactive_hide_and_reactivate・test_native_main_close_during_modal_keeps_child_and_recovers・test_native_endsession_save_and_explicit_quit_cleanupをDebug／Releaseで検査します。実WM_SYSKEYDOWN／SC_CLOSE／WM_CLOSEの配送、入力再開と一時フック解放、常駐待機・hide、親無効中の閉じる要求でも親のタイマーが継続することと子の取消後の復帰、quit、WM_ENDSESSIONのTRUE／FALSE、INI保存・拡張資源・窓の解放を確認します。非表示ステーションでは可視判定と前面化を保証しません。通常デスクトップの再表示・アクティブ状態・キーボードフォーカスは`--interactive-foreground test_native_main_close_inactive_hide_and_reactivate`で一時ウィンドウと設定だけを使い、元の前面窓を復元します。同じオプションでtest_native_main_close_during_modal_keeps_child_and_recoversを指定すると、子のフォーカス維持と取消後の親のフォーカス復旧も検査します。通常デスクトップにアクセスできる実行環境が必要です。物理キー・実IMEとOSログオフ／シャットダウンそのものは再現しません。
+
+### Plane描画とWindow・トレイの寿命
+
+TextPlaneの描画境界はtools/test_native_text_scroll.pyをRECRAFT_TEST_CONFIGURATION=Debug／Release、最終配布は--package dist/ReCraftLaunchで検査します。実PYDの非正幅・高さ、空文字、負offsetと倍幅文字の幅0／1・左右端、混在文字列・正offsetの空白補完・属性・水平スクロール・引数形式・寿命ガードを扱い、DIB再生成後の画素も照合します。C int境界の座標・幅・高さ・offsetは小さいPlaneで計算とクリッピングを検査し、描画バッファのネイティブ確保が発生しないことを確認します。UTF-16変換・行配列確保の失敗はMemoryErrorと取得バッファ解放、続く正常描画での復帰を検査します。巨大なPlaneやバッファは作らず、未修正バイナリで危険な再現は行いません。
+
+Window.clearとTaskTrayIcon.popupMenuの再入はtools/test_native_window_lifetime.pyで検査します。TextPlane／ImagePlaneの最後のラッパー参照の最終化からclear・Window／他Planeのdestroy・Plane再生成を実行します。トレイはsequenceの長さ／要素／一時tupleの最終化・旧コマンド最終化・CommandInfo生成・選択通知からの破棄、例外保持・再試行・ラッパー再初期化を扱います。20回の反復でCRT確保／解放とGDI／USER資源数を照合します。トレイ通知登録と破棄注入時のメニュー追跡は当該子プロセスのIATで代替します。test_tray_real_popup_layout_cancel_and_repeatは専用非表示デスクトップで実TrackPopupMenuの項目矩形・タイマーによる取消・3回の再表示を検査します。
+
+同ファイルのトレイ回帰では、座標の__index__・sequenceの長さ／要素・一時tuple／旧コマンドの最終化・CommandInfo生成・選択処理の7経路で同一本体への再入をValueErrorで拒否し、実HMENUの表示ラベル・項目IDとWM_COMMANDで実行されるOuterの対応を照合します。別アイコンの表示、引数／構築／メニュー生成例外後の再表示、取消後の復帰も検査します。test_tray_real_popup_reentry_keeps_outer_selectionは実TrackPopupMenu中のタイマーから再入と生存中の再初期化を試み、実メニューのIDで選択通知を送り、Outerだけが3回実行されることを確認します。物理キーやマウスによる選択の検査ではありません。
+
+生存中のTaskTrayIcon.__init__のValueError、拒否後のHWND・参照保持と使用・破棄、destroy後の再初期化、引数型・CreateWindowExW・SetPropW・実生成直後／ShowWindow中の破棄による初期化失敗と正常復帰を検査します。40回の再初期化・各3回の表示・破棄ではCRTの確保／解放、GDI／USER資源数、全HWNDの失効、実CreateIconで補った所有HICONとHMENUの個別生成／解放を照合します。python.exeにアプリのアイコン資源がないため、LoadImageだけを当該子プロセスで代替します。Debug／Releaseと最終配布の--package dist/ReCraftLaunchで同じテストを実行します。
+
+TextPlane.putStringの公開仕様を変更した場合は、生成された日英ckit_native.htmlでクリッピング・保持範囲・無操作条件・OverflowErrorの条件が両言語へ収録されていることを確認します。仕様説明を変更した場合の表示確認は、最終配布のdocs/ja/ckit_native.html・docs/en/ckit_native.htmlの「Plane」と「MenuNodeとTaskTrayIcon」に対応する節を通常ブラウザーで開き、表と式・例外説明に表示欠けがなく読めることだけです。
+
+列幅の異常系はtest_native_strings.pyのtest_columns_allocation_failures_release_ownership_and_recover・test_columns_native_array_failure_and_length_boundaries・test_columns_unicode_large_text_and_integer_width_boundariesをDebug／Release、最終配布は--package dist/ReCraftLaunchで検査します。変換・配列・tuple・最初／途中／末尾の整数生成失敗をプロセス内IATで限定注入し、Python例外を変更しないネイティブthunkで呼出しと解放を計数します。部分tupleの所有参照は追跡用整数の参照数で確認し、各障害後に正常実行を照合します。UTF-16長のINT_MAX-1／INT_MAX／INT_MAX+1と2^32は拡張側wcslenだけを代替し、巨大配列を実確保しません。幅のINT_MAX境界は短い実文字列と巨大タブ幅で検査します。空・ASCII・日本語・補助平面・孤立サロゲート・10万文字、既存のtest_native_text_measurement_offsetsとTextWidget位置の回帰も併用します。任意のプロセス全体のメモリ枯渇を保証する検査ではなく、容量・所有権の判定は上記の自動検査で行います。
+
+Windowの生成・破棄境界はtools/test_native_window_lifetime.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、最終配布には--package dist/ReCraftLaunchを指定します。親プロセスはGUI拡張をimportせず、時間制限付き子プロセスの専用非表示デスクトップで検査します。生存中の親Window／整数HWND／0／省略／明示Noneと、破棄済み・未初期化の親の拒否、CreateWindowExW失敗（エラー0を含む）・DPI復元によるエラー上書き・SetPropW失敗・実WM_CREATE後の生成取消・初回表示中のOS破棄を扱います。コールバック全24参照・ラッパー参照・CRTの確保／解放回数・取得GDIの個別解放とウォームアップ後の資源数、次の正常生成、再初期化拒否、明示／OS／所有者経由の破棄とPlane無効化、最終化子の再入拒否、DestroyWindow失敗後の状態保持・再試行も確認します。障害注入は試験プロセス内のIAT／試験クラスのWndProcだけを差し替えます。全メモリ確保を失敗させる試験ではなく、Window本体の確保失敗を対象とします。Debug STLの小さいnoexcept内部確保は失敗注入しません。
+
+同じ子プロセス検査で、通常タイマー・遅延呼出し・ホットキーからの自己破棄、実タイマー／遅延配送、ネストしたメッセージからのOS破棄、最終化子の再入、破棄後の操作拒否、DestroyWindow失敗中の追加配送抑止と再試行を確認します。外側の処理が戻る前のラッパー再初期化、移動通知後のサイズ通知・位置再試行抑止、メニュー判定／動的項目／CommandInfo生成・ポップアップ選択中の破棄、継続条件からの破棄後の終了、登録解除時の比較／最終化子からの破棄も扱います。反復自己破棄ではCRT確保／解放数、登録関数の参照数、GDI資源数を照合します。ポップアップ追跡は試験プロセス内で選択通知へ置換し、可視メニュー操作は再現しません。実OSホットキーの自己破棄後の解除・同じキーの再登録は、--ordinary-desktop NativeWindowLifetimeTests.test_real_hotkey_destroy_releases_registrationで通常デスクトップの非表示窓を使って検査します。物理キーの送信は行いません。
+
+GUI・モーダルの回帰はtest_native_callbacks.py、test_native_api_safety.py、test_window_show.py、test_native_gdi.pyと、check_standard_windows.pyのモーダル・候補窓の構築失敗／資源解放／再表示の検査を併用します。APIの追加説明を目視する場合は、最終配布のdocs/ja/ckit_native.html・docs/en/ckit_native.htmlとTextWindowページの構築・破棄説明に欠けがなく読めることを対象にします。
+
+### ホットキーの登録と表示
+
+ホットキー境界はtools/test_hotkey.pyとtools/test_native_callbacks.pyを使います。後者はDebug／Releaseの実PYDで登録拒否・参照解放・ID再利用・解除失敗・比較例外・自己解除中の遅延通知を検査します。専用非表示ステーションはOS登録を拒否するため、実OSの競合・解除後の再登録は通常デスクトップ上の非表示窓で`--ordinary-desktop NativeCallbackTests.test_hotkey_real_os_conflict_and_recovery`を別実行します。物理入力は送信しません。最終配布には`--package dist/ReCraftLaunch`も指定します。check_standard_windows.pyのtest_native_config_hotkey_delete_accept_cancel_and_reassign・test_native_config_hotkey_assign_cancel_and_reregister・test_native_hotkey_failure_keeps_ini_and_old_setting・test_native_startup_hotkey_failure_keeps_recovery_uiは実GUI／INIと代替登録応答で設定確定・取消・失敗時の旧値維持・起動失敗通知と復帰を確認します。Delete解除は取消・確定・解除拒否・未設定での再確定・再割り当てとINI保存値を検査します。表示の共通化はtools/test_hotkey.pyで修飾の全組合せ・押下順・左右VK、日英配列のOEM記号、Shift非依存、既存構文の保持、画面間一致と狭幅省略を確認します。test_native_config_hotkey_modifier_warning_returns_and_preserves_candidateは実警告の所有HWND・親子の有効状態・破棄、候補保持・取消・解除・再入力と設定非変更を、test_native_startup_modifier_hotkey_is_rejected_without_ini_rewriteは保存済み修飾キーの拒否と起動継続を確認します。tools/test_variable_layout.pyのtest_hotkey_clear_guide_is_two_lines_with_fixed_width・test_hotkey_long_value_fixed_width_and_work_area_ellipsis・test_hotkey_modifier_warning_localized_layoutは日英・100/150/200%相当の実フォントで固定幅・全文／省略・描画範囲と警告文の配置を確認します。最終配布では日英の表示と警告の可視読みやすさ、物理キーによる修飾プレビューと通常キーの入力感だけを確認します。エラー文言を変更した場合は、最終配布で登録競合を発生させて日英の可視読みやすさを確認します。
+
+### C++起動境界
+
+C++起動境界はtools/test_native_startup.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行します。実main.cppを含むC++プローブでGetModuleFileNameWの259／260／261文字・長いパス・上限の切詰め・失敗、GetEnvironmentVariableWのWCHAR容量・再取得中の拡大／縮小／消失・空／取得失敗・巨大長・PATH合成長・確保／設定失敗を検査します。実Windows取得も照合し、実EXEは隔離した検査用clnch_main.pyだけを起動して、通常のPATH前置・Debug／ReleaseのPython home／検索パス・引数・バイトコード抑止を確認します。OS／Python全体の任意の長い配置パス対応を保証する検査ではありません。
+
+### pyautoの画像取得
+
+pyautoの画像境界はtools/test_native_pyauto_image.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、最終配布は--package dist/ReCraftLaunchで確認します。時間制限付き子プロセスでRGBコピー・余剰／不足バッファ・非正寸法の空画像・findの順序／四辺／大きすぎる画像を検査します。65536×65536（旧32bit乗算では0へ周回）・C int／Py_ssize_t境界は短いbytesで確保前の拒否を確認し、巨大な実バッファは確保しません。取得矩形の差分は拡張してから計算し、BITMAPの寸法・stride・planesとGetBitmapBitsの符号付きLONG上限も確認します。仕様は[BITMAP](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/ns-wingdi-bitmap)・[GetBitmapBits](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getbitmapbits)・[GDI選択と解放](https://learn.microsoft.com/en-us/windows/win32/gdi/operations-on-graphic-objects)を参照してください。
+
+試験プロセス内IATでGetWindowRect・GetWindowDC・CreateCompatibleDC・CreateCompatibleBitmap・SelectObject（初回と復元）・SetMapMode・BitBlt・GetObject・GetBitmapBits・GetPixel、2段階のmalloc、Python画像オブジェクト／bytes生成の失敗を注入します。部分取得の拒否、元の例外、取得済み資源だけの解放、復元→DeleteDC→DeleteObjectの順序、失敗後の復帰を照合します。Python例外設定中の解放観測はPythonコールバックでなくネイティブthunkを使います。24／32bitとパディング、16bit 565、GetPixelの各画素順も検査します。専用非表示デスクトップの実DIB DCを取得元として差し替え、実CreateCompatibleDC／Bitmap・BitBlt・GetObject・GetBitmapBitsと実GetCurrentObjectで変換・選択復元を確認し、100回×5バッチの取得後にGDI資源の継続増加がないことを照合します。画面からのBitBltや可視ウィンドウ内容の保証とは区別します。test_native_pyauto_ownership.py・test_native_pyauto_documentation.py・test_native_shell.py・test_native_build.pyも関連回帰に使用します。
+
+### ネイティブ文字列と座標
+
+TaskTrayIconはtools/test_native_api_safety.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、最終配布は--package dist/ReCraftLaunchで検査します。時間制限付きの子プロセスで、空／日本語・126／127／128 UTF-16コード単位・補助平面文字の境界、過長／NUL／型の拒否時のOS未到達と参照保持を確認します。プロセス内IAT代替で、登録成功・エラー0／ERROR_TIMEOUT／エラー未設定・その他の失敗、1秒タイマーの生成失敗、MODIFY成功／ADD再試行・反復障害での復帰、TaskbarCreatedによる再登録と古いタイマー通知の無視、保留中のdestroyを照合します。受信窓の生成失敗では元のWindowsエラー・ハンドラ参照解放・通知登録とタイマー生成の未到達を確認します。実Windowsタイマーとメッセージループの遅延配送、既存の明示／OS破棄・参照解放・再入契約も検査します。Shell登録の応答は代替し、常用Explorerの停止・再起動は行いません。
+
+tools/test_native_strings.pyはRECRAFT_TEST_CONFIGURATION=Debug／Releaseの実ckitcore・pyautocore・clnch_nativeを専用非表示Windows領域で検査します。最終配布には--package dist/ReCraftLaunchを付け、library.zipとPYDの読込先も照合します。ASCII・日本語・補助平面文字・空文字列、先頭／中間／末尾／複数NUL、非str／None、TextPlaneの計測・出力、タイトル／MenuNodeの状態保持、構築失敗後の解放、Hook属性名を確認します。Window.findの実検索とFindWindowW／ShellExecuteExW入口のUnicode・NULL・表示モードを照合し、NUL／変換MemoryError時の未到達はPython例外を変更しないネイティブカウンターで検査します。Shell起動は代替し、実一時ファイルではfindFileとNUL付きsetFileTimeの更新抑止を確認します。既存FontのNUL拒否、LineのNUL保持は変更せず回帰対象とします。長さ付きIPC・キーボード状態・画像バイト列はtest_native_shell.py等の既存検査を併用します。未使用のPyStringToStringとstrutilも、native_strings_probe.cppへ両実装のソースを個別にリンクし、選択構成のMSVC／CRTで実行します。Python入口のNUL／型／メモリー確保失敗、Win32の既存コードページ変換、明示長バッファのNUL後方保持を照合します。構築失敗は別Pythonプロセスでも正常終了を検査し、テスト用子プロセスだけSetErrorModeで障害ダイアログを抑止して終了コードと標準エラーを判定します。
+
+修飾キーはtools/test_native_callbacks.pyのtest_modifier_high_bit_keyboard_and_mouse_eventsで検査します。実ckitcoreのGetKeyStateだけをプロセス内IATで代替し、0／1／0xf0／0x7fff／0x8000／0x8001／0xffffとAlt・Ctrl・Shift・左右Windowsキーの全32組合せを、6種類のキー／文字メッセージと11種類のマウスメッセージで照合します。押下はSHORTの最上位ビットだけで判定し、トグルビットは無視します。割当て値1／2／4／8、左右WindowsキーのOR統合、イベントの引数形式を維持します。RECRAFT_TEST_CONFIGURATION=Debug／Releaseと最終配布の--package dist/ReCraftLaunchで実行します。物理入力は送信しません。仕様は[GetKeyState](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getkeystate)を参照してください。
+
+ckit／pyautoの文字バッファとドラッグ座標はtools/test_native_callbacks.pyのtest_dropfiles_capacity_lengths_and_real_paths・test_dropfiles_zero_return_without_buffer_write・test_dropfiles_python_failures_release_and_recover・test_class_name_capacity_return_length_and_real_api・test_inactivate_class_name_capacity_and_failure・test_drag_posts_signed_screen_coordinates_to_real_queueで検査します。RECRAFT_TEST_CONFIGURATION=Debug／Releaseを選び、最終配布は--package dist/ReCraftLaunchを付けます。実HDROPの空リスト・単一／複数ファイル・日本語／補助平面文字・260／261／262／263／600 UTF-16コード単位を切詰めず取得し、終端NUL・容量直後のガード・通知後のパス列を照合します。260コード単位を超える実在一時ファイルも確認します。DragQueryFileWはNULLバッファで終端を除くUTF-16長を取得し、長さ+1要素を確保して再取得します。空名は実HDROPでは項目の終端になるため、取得長0／UINT_MAX、書込みなしの0・短い／過大な戻り値をIATで検査し、ドロップ全体の破棄と次の正常通知を確認します。リスト／パスバッファ／文字列／追加／引数tupleの確保失敗、途中要素の失敗、ハンドラーなし／例外でもDragFinishを1回実行し、バッファとPython所有参照を解放することを検査します。例外設定中の解放計数はネイティブthunkを使います。
+
+GetClassNameWは256要素（終端込み）を渡し、実255文字クラス・小さい容量での切詰め／NUL／ガード・破棄済みHWNDの実失敗と、空／254／255／256／600文字のIAT応答を検査します。pyautoは戻り値の文字数だけをPythonへ変換し、0なら空文字列、ckitの比較用配列は取得失敗でも空を保持します。ckitの実クラス取得と自クラス除外も照合します。両プロジェクトのDebug／ReleaseはUnicode設定で、実コンパイル引数はUNICODE・_UNICODEと/Zc:wchar_t、SDKのTCHARはWCHAR＝16bitのwchar_tです。APIはW版を呼びます。仕様は[DragQueryFileW](https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-dragqueryfilew)・[GetClassNameW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getclassnamew)を参照してください。
+
+Window.dragはPostMessageによるWM_NCLBUTTONDOWN／HTCAPTIONを維持し、MAKELPARAMでx／yの各下位16bitを格納します。C intの最小／最大・-32769／-32768／-1920／-1／0／1／1080／32767／32768の121組で、呼出し中の非配送、実キューの値、DispatchMessage後の受信座標を照合します。受信時は符号付き16bitとして解釈し、-32768～32767の外はWin32メッセージの16bit制約に従います。試験用WindowProcは移動モーダルループへ入る直前で止めるため、可視ドラッグの検査ではありません。--ordinary-desktopでは通常WinSta0\Defaultの非表示窓でも同じ文字バッファ・座標検査を実行できます。仕様は[WM_NCLBUTTONDOWN](https://learn.microsoft.com/en-us/windows/win32/inputdev/wm-nclbuttondown)・[MAKELPARAM](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-makelparam)を参照してください。
+
+物理マルチモニターで可視検査を行う場合は、最終dist/ReCraftLaunchまたは同版ZIPの本体を左側／上側のモニター（負の画面座標、16bit範囲内）へ置き、従来のマウスドラッグで掴んだ位置が飛ばず追従することを確認します。通常位置でも同じ操作感であることを見ます。物理環境がない場合は可視検査を未実施と明記し、自動検証の結果を可視ドラッグの保証へ読み替えません。追加説明の表示確認を行う場合の対象は、日英docs/<lang>/ckit_native.htmlのdropfiles_handler・Window.dragとpyauto_native.htmlのWindow.getClassNameです。
+
+### 共有列挙とCOM寿命
+
+clnch_nativeの共有列挙とCOM寿命はtools/test_native_clnch_lifetime.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、実PYDの読込先を照合します。非str（暗黙変換しない）、文字列変換／リスト生成失敗時のNetShareEnum非呼出し、Unicode・str派生・空文字列・キーワード・複数ページ、要素構築／追加と次ページの失敗時の元例外・Python参照・取得済みNetAPIバッファ解放を検査します。IATの障害注入は試験プロセスだけに限定し、例外設定中の後始末記録はPythonコールバックを避けたネイティブthunkを使います。実ローカルの空文字列列挙は直接NetShareEnumと照合し、権限／サービス失敗時も同じWindowsエラーを確認します。外部サーバーへの接続・認証・共有作成は行いません。
+
+COMは実doDragAndDropのDoDragDrop入口だけを代替してCDataObject／CDropSourceを保持し、実EnumFormatEtcからCEnumFORMATETCを得ます。各クラスでIUnknownと対応インターフェースのQueryInterface成功・未対応の失敗、参照数1→2→3→4→3→2→1→0と1回の最終解放を照合します。最終解放では実デストラクターの後のCRT freeを一時保留して旧参照数領域を非0値へ上書きし、Releaseが0を返すことを確認してから元のCRTで1回解放します。解放後の参照数読取りを検出する検査であり、実ドラッグ操作や第三者ドロップ先の検証ではありません。関連回帰はtest_native_shell.py・test_native_build.pyを使用します。最終配布PYDにも同じ検査を--package dist/ReCraftLaunchで適用します。
+
+enumShareの仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPのdocs/ja/clnch_native_api.html・docs/en/clnch_native_api.htmlを開き、str・空文字列・型／変換例外の説明が欠けず読めることを確認します。
+
+### コールバックとIPC配送
+
+ckitのネイティブコールバックとWM_COPYDATAはtools/test_native_callbacks.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、実PYDの読込先を照合します。専用非表示ステーションの実SendMessage・メニュー状態／コマンドID・WM_SIZING・EnumWindowsを使い、None・文字列・浮動小数点・範囲外整数・__index__の成功／例外、コールバック例外、繰返し・参照数・失敗後の復帰を検査します。メニューの表示／親の有効状態／未チェックという例外時既定、sequence長さ／途中取得失敗と追加済み項目・コマンド対応、messageLoopの条件失敗後の続行と0／quit終了を確認します。PyErr_Printのsys.last_exc等は参照測定前に解放します。
+
+IPCは不正UTF-8・長さ0・埋込NUL・NULL構造体・非0長NULL・指定バイト長・未知識別値・ハンドラ例外と正常str入力を検査します。IATのネイティブthunkで引数構築失敗を注入し、DWORD最大長をPy_ssize_tとして渡すことだけを読取り前に観測します。4 GiBの実データ確保・任意の無効アドレス探査ではありません。別プロセスから不正UTF-8と正常な日本語を交互に各10回送り、FALSE／TRUE応答と次の受信を照合します。test_native_pyauto_ownership.pyの既存8検査でenumの参照・割当失敗も検査し、check_standard_windows.pyのtest_native_ipc_argument_selection_and_replacement・test_native_ipc_execute_runs_commands_once_and_preserves_input・test_native_ipc_delivery_while_editor_is_modal・test_native_popmenu_optional_limits_and_cleanupで本体との統合を確認します。
+
+通常デスクトップの検査は--ordinary-desktopを明示し、実際の名前がWinSta0\Defaultであることを必須にします。別のデスクトップの結果と区別します。同じ非表示試験窓だけを生成し、別プロセスIPCも含めて自動検証します。最終配布の検査は--package dist/ReCraftLaunchを付け、library.zipと配布PYDだけを読みます。可視のメニュー操作・物理入力・実IMEの確認とは区別します。仕様説明を変更した場合は、最終配布の日英docs/<lang>/ckit_native.htmlで、Windowのsizing_handler・ipc_handler・nchittest_handler・messageLoopとMenuNodeの説明が欠けず読めることを確認します。
+
+### 前面化と参照所有
+
+pyautoの前面化と型サイズはtools/test_native_pyauto_foreground.pyをDebug／Release x64の実PYDで検査します。IATを一時差替えし、GET・一時SET・復元SET・AttachThreadInputの接続／解除・SetForegroundWindowの成否6項目と元値0／0xf1234567の128条件で、呼出し順・引数・失敗ログ・復元と解除を照合します。成功は1以外の非0を返し、ログが最終エラーを上書きしても前面化の元エラーでOSErrorになることを検査します。force無効／同一スレッドの6条件では補助API非呼出しを確認します。GETはDWORDへのポインター、SETはpvParamに新しい値を整数として渡し、uiParam／fWinIniは0のままとします。仕様は[SystemParametersInfoW](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-systemparametersinfow)を参照してください。Input／Hookの__basicsize__はPyObject_HEAD・INPUT配列／9参照から独立に算出したインスタンス構造体サイズ（現在のx64環境で104／88バイト）と照合し、__itemsize__は0を維持します。関連するtest_native_pyauto_documentation.py・test_native_pyauto_ownership.py・test_native_hooks.pyでInputの構築・入力列と送信の成否、Hookの全属性・reset・実登録／解除・destroy／dealloc・再入時の寿命を検査します。
+
+このIAT検査と非表示WindowsのHook実登録は、可視の前面化の実証ではありません。通常デスクトップでは一時的な可視窓を異なるスレッドに作り、実APIへ転送する観測でGET→一時SET→SetForegroundWindow→元値SET→接続解除と、GetForegroundWindowが対象HWNDになることを確認します。同一スレッド／force無効も区別し、タイムアウト0と非0の復元を照合して、最後に元設定と元の前面窓を戻します。前面HWNDを取得できる通常デスクトップへのアクセスが必要です。他アプリへの物理入力直後、メニュー表示中、LockSetForegroundWindowによるロック中、昇格先やセキュアデスクトップへの切替は、この限定検査の対象外です。[OSの前面制御条件](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)により要求が拒否され得るため、forceによる常時成功を期待結果にしません。仕様説明を変更した場合は、最終配布の日英docsのpyauto_native.htmlを開き、Window.setForegroundの説明が欠けず読めることを確認します。
+
+pyautoのWindow参照所有権とInput.sendのエラー経路はtools/test_native_pyauto_ownership.pyをDebug／Release x64の実PYDで検査します。RECRAFT_TEST_CONFIGURATIONで構成を選び、同梱Pythonで実行します。固定したHWNDへのIAT照会でgetCaret／enumを反復し、同一ラッパーの参照数、未保持ラッパーの実dealloc回数とwindow_listからの除去、None、列挙継続／停止・callback例外・不正戻り値を照合します。PyErr_Printが保持するsys.last_exc／旧last_*のトレースバックは測定前に解放し、CPythonの例外キャッシュを漏れと混同しません。専用非表示Windowsの実EDIT窓でも列挙・実キャレット・OS窓破棄後のラッパー寿命を確認し、GetGUIThreadInfoのスレッド指定だけを検査スレッドへ固定します。ネイティブthunkでラッパー／索引／tuple／INPUT配列の割当失敗を限定注入し、list派生の長さ・要素取得例外と不正要素、参照数・CRT確保／解放数・失敗後の正常送信を検査します。SendInput入口は代替し、list／tuple／空列の入力個数・順序、実Hook関数に渡した非0時刻とモジュールマーカー、部分送信エラーを照合します。test_native_pyauto_documentation.py・test_native_hooks.pyも関連回帰として使用します。物理入力の配送や任意の外部アプリの反応の確認とは区別します。仕様説明を変更した場合は、最終配布の日英docsのpyauto_native.htmlでWindowの寿命、enumの失敗、Input.sendの検証失敗の説明に欠けや読みづらさがないことを確認します。
+
+### TextWidgetの共有文書
+
+TextWidgetの共有Documentの位置補正はtools/test_gui_drawing.pyのtest_shared_document_*で、終了行と後続行の対照再現、文字オフセットを基準とする変更範囲前・中・後／境界、同一行置換・挿入・行削除・複数行変更、文書先頭／末尾／全削除、Unicode、2／3ビューの固定端・移動端と逆方向、通常Undo／Redo、矩形選択の仮想列と正規化、補正後のPointの所有ビューと上下移動を検査します。実ネイティブLineを使い、Windowと描画は代替します。既存test_gui_drawing.py・test_native_line.py・test_ckit_boundaries.py・test_import_cleanup.py・test_extension_examples.pyも使用します。check_standard_windows.pyのtest_native_shared_textwidget_positions_and_undoは非表示Windows上の3ビューで、実描画・Unicodeの表示セル変換、別ビューからのRedoとまとめたUndo／Redoを照合します。関連するtest_native_textwidget_unicode_positions_search_and_edit・test_native_documented_textwidget・test_native_atomic_undo_endと併せて、通常デスクトップでのキャレット・選択表示の見た目とは区別します。
+
+共有Documentの選択表示を変更した場合は、最終dist/ReCraftLaunchのlibrary.zipとネイティブ拡張を使う共有Documentの3ビュー確認窓で、`abcDEFghi`と`後続😀abcdef`の2行に対し、別ビューの選択端点を(0,8)と(1,4)、逆方向にも設定し、最初の行の(0,3)..(0,6)を`全`または`全\n追記`へ置換した後の表示を確認します。0始まりの行・Python文字位置で、同一行置換後は(0,6)と(1,4)、複数行置換後は(1,4)と(2,4)に選択端点が見え、後続行の端点が同じ文字境界に留まること、Undo／Redo後も表示と選択端点が対応することを確認します。日英APIのsetDocument・setSelectionの仕様説明を変更した場合も最終ヘルプで欠けず読めることを確認します。
+
+### 共通部品と引数の境界
+
+ckit共通部品の局所境界はtools/test_ckit_boundaries.pyで検査します。CommandSequenceは失敗後の暗黙成功・全失敗・空列・初期False・例外伝播と同じinfoのargs／arg_string／mod／独自属性保持、Documentは空／逆順範囲・最終行・dirtyの範囲と解除・計算済み行を除いたmax_lex上限と再開を照合します。空範囲は通常の整数引数では従来の短絡評価でも例外を回避していましたが、明示ガード後もトークンとdirty位置を保持することを検査します。キーは不正文字列の通知・非登録・正常割当保持、別型／None／派生型比較、日本語種別7／標準種別4の反復初期化・全キー表と共通辞書非変更、有効表記・数値キー・extraの置換／削除を確認します。Windows上の実ネイティブLineを使い、キーボード種別の取得だけを代替します。既存test_import_cleanup.py・test_gui_drawing.py・test_extension_examples.pyと、check_standard_windows.pyのtest_native_documented_textwidget・test_native_documented_extensions・test_native_launcher_reload_uses_live_keymaps_and_providers・test_native_context_menu_paths_and_missing_input_preservationで、既存のextra比較・文書処理・拡張からの登録・再読込・101/106設定の実キー配送も確認します。
+
+共通部品の仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPのdocs/ja・docs/enでclassckit_1_1ckit__command_1_1_command_sequence.html、classckit_1_1ckit__textwidget_1_1_document.html、classckit_1_1ckit__key_1_1_key_event.html、classckit_1_1ckit__key_1_1_keymap.htmlを開き、結果初期化・空範囲・比較／表初期化・不正キー非登録の説明が欠けず読めることを確認します。
+
+### パス・名前解決と昇格
+
+パス／名前解決の整合はtest_argument_strings.py・test_command_platform.py・test_command_store.py・test_json_commands.pyで、通常／引用符付きLink、全体の引用符一組と部分引用符、名前部分の前後空白、同名JSON優先・空登録、別名、引数原文、履歴、不存在ドライブを検査します。check_standard_windows.pyのtest_native_context_menu_paths_and_missing_input_preservationは101/106両配列の実cmd_keymap・EditWidgetへのキー配送とメニュー入口の捕捉で、空欄・未知名・不存在・不完全引用符時の入力／選択／セッション／履歴保持と、実在ファイル／フォルダの非引用・引用パスの引渡しを確認します。test_native_missing_drive_and_registered_name_whitespaceは実際に存在しないドライブを選び、単独文字・ルート・子パスのEnter保持、実在ドライブと名前空白時のJSON優先・子プロセスのGetCommandLineW／argv・履歴原文を照合します。test_native_quoted_link_alias_child_workdirは空白・日本語を含む実EXEを引用符付きLink／環境変数・多段別名から起動し、WorkDir自動決定と明示指定優先、引数原文、F12原文コピーを確認します。test_shell_absolute_and_environment_targets・test_native_target_and_mapped_folders_use_real_os_searchは引用符付きLinkとマクロ、Shift+Enterの所在フォルダ・基点置換も含みます。実Shellメニュー取消・コピーはtest_native_shell.pyの既存2検査で別に確認します。専用非表示Windowsの検査であり、通常デスクトップでの目視とは区別します。
+
+パス・名前解決の仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPのdocs/ja・docs/enでindex.htmlのStep 1／Step 3、command_json.htmlのLink／引数、commands.htmlのコンテキストメニュー行を開き、説明に表示欠けや読みづらさがないことを確認します。
+
+runasでのUAC取消は、Windowsエラー1223だけをShellExecuteCommandのジョブで無通知終了にします。test_argument_strings.pyとcheck_standard_windows.pyのtest_native_ra_cancel_is_silent_and_other_errors_are_reportedで、登録名・別名・実行ファイル指定の取消、他の起動失敗の通知維持、非runasの非抑止を確認します。後者は実MainWindow・Enter・JobQueue・ConsoleWindowを使い、既存ログ保持・新規writeと自動表示の非発生・入力終了・通常の履歴追加、次の実子プロセス起動を照合します。WindowsエラーはShell入口へ注入するため、実UACダイアログの取消操作とは区別します。
+
+### 入力引数と通常実行
+
+標準入力の引数構文はtools/test_argument_strings.pyで、登録・未登録・直接ファイル・関連付け・JSON固定Args・多段別名・%param%・_ra・修飾・キー・補完・IPCの生文字列を照合します。引用符付きの直接ファイル／フォルダは同テストで空白・日本語・末尾バックスラッシュ、引用符一組だけの除去、未一致、関連付けのargs/arg_stringと履歴用原文を照合します。test_native_quoted_file_and_folder_input_historyは実EditWidget・EnterとShell入口の捕捉でフォルダを含む引渡しと履歴を、test_native_raw_argument_strings_reach_shell_and_childは引用符付き実行ファイル・関連付けの実子プロセスを確認します。引数欄の前後空白保持はtest_command_draft.py、独自入力の契約はtest_input_session.py・test_extension_examples.pyでも確認します。check_standard_windows.pyのtest_native_raw_argument_strings_reach_shell_and_childは実EditWidget・Enter、実ShellExecute入口の捕捉、別プロセスのGetCommandLineWとargvを別々に照合します。argvの一致だけを原文保持の証拠にしません。登録・別名・直接入力等の起動経路と引数条件を扱い、runas入口だけは非昇格起動へ置換するためUAC同意・実昇格は人力条件です。test_native_ipc_execute_runs_commands_once_and_preserves_inputは別プロセスからの実WM_COPYDATAで空白・引用符・空引数を確認します。App Pathsは既存の一時HKCU登録の検査を使います。
+
+人力確認は最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーで、`_ra;C:\Windows\System32\cmd.exe /k echo "a b"`を実行し、UACを承認した場合に管理者のcmdで`"a b"`が表示されること、別の実行でUACを取り消すと起動せず、新しいエラー出力・コンソール自動表示がないことを確認します。引数構文・_ra・Python APIの説明を変更した場合は、日英のF1ヘルプに表示欠けがないことを確認します。
+
+### 組込名と登録更新
+
+組込の小文字登録・大文字小文字を変えた実行と履歴保持はtools/test_input_settings.py、候補全般のlower()による重複除去・登録表記優先・候補順・引数/パス/URLの表記保持・履歴削除はtools/test_mainwindow.pyで確認します。履歴追加と登録層はtools/test_input_session.py・tools/test_command_registry.py、JSON優先はtools/test_json_commands.pyで照合します。check_standard_windows.pyのtest_native_lowercase_builtins_and_case_insensitive_historyは非表示Windowsの実MainWindow・Enter・Tab・Ctrl+Kで登録名・実行・履歴統合/削除を、test_native_completion_modes_exclude_history_files_and_providersは補完3モード・登録名/履歴/独自候補の大文字小文字重複を確認します。通常デスクトップの可視表示・物理入力・実IMEとは区別します。
+
+組込edit・MainWindow.editor・command_EditとConfigのcustom.py編集入口は廃止しています。tools/test_json_commands.pyでeditの通常JSON登録・大小文字・別名・引数・登録削除後の無動作を、check_standard_windows.pyのtest_native_edit_is_json_only_and_launches_external_editorでAPI不在・実キー配送・実子プロセスへの固定/入力引数と作業フォルダ・Reload後の登録維持/削除を検査します。new・Ctrl+Eはtest_native_new_and_ctrl_e_input_entries、JSONによる他の組込の上書きは既存の登録・JSON回帰で照合します。
+
+GUI更新後のPython独自登録はtools/test_command_registry.pyで、先頭・中間・末尾の位置、同名登録、JSON更新・追加・削除、所有者・タプル互換性、管理項目の重複・全削除と連続保存の安定性を検査します。check_standard_windows.pyのtest_native_json_gui_changes_keep_custom_positions_and_dispatchは、実custom.pyの登録、編集画面の連続保存、一覧の複製・削除、実EditWidgetのEnterと子プロセス、同名組込の前に置いた独自関数、別名の管理辞書参照、通常Reloadによる登録位置の変更と新しい基準の維持を専用非表示Windowsで確認します。可視UI・物理入力・実IMEの検証とは区別します。
+
+### JSON検証と拡張Reload
+
+同一JSON内の重複コマンド名はtools/test_command_store.pyで、完全一致・lower()一致・Unicodeでのlower()/casefold()の違い・複数の正常登録・ネストした属性名・全読込モード・日英文言を検査します。test_command_editor.py・test_command_list.pyは読込失敗通知・保存禁止・元JSONと入力の保持を、check_standard_windows.pyのtest_native_duplicate_json_names_block_list_and_editor_saveは専用非表示Windowsの実MessageBox・Enter/Esc・新規／既存編集と一覧中止を確認します。重複後のReloadでの旧登録・資源・実子プロセス起動の維持はtest_native_json_reload_preserves_live_configuration_and_recoversで確認します。エラー文言や仕様説明を変更した場合は、最終配布物で日英のエラー文言と、ヘルプの読み込みエラー時の説明の読みやすさを確認します。
+
+JSONのReloadはtools/test_command_store.pyで欠損とI/Oエラーの区別、tools/test_input_settings.pyで設定メニューと内蔵reloadの読込・終了・標準/独自適用失敗時の成功通知抑止と成功時1回通知を検査します。check_standard_windows.pyのtest_native_reload_menu_and_command_notificationsでも実MainWindowと両入口を使い、同じ失敗段階と成功通知を照合します。check_standard_windows.pyのtest_native_json_reload_preserves_live_configuration_and_recoversは実MainWindowで構文・操作フィールド・型・登録名・I/Oエラー後の旧コマンド実行、別名・独自コマンド・キー・入力設定・終了処理・旧HWNDの保持、custom.pyの未評価、成功通知の非出力を確認します。修正後の切替・旧資源解放、検証後のファイル変更時も読込済み結果を使うこと、空オブジェクト・操作0件の名前付き登録・欠損も検査します。実子プロセスと非表示Windowsのキー配送を使い、通常デスクトップの表示・物理入力とは区別します。既存のJSON編集・拡張Reloadの検査も関連範囲で使います。
+
+拡張モジュールのReloadはtools/test_input_settings.pyで、選択中のscripts/・extensions/だけの再読込、依存・循環・通常/namespaceパッケージ、from-import、定義削除、同一時刻/サイズのpyc、読込失敗時の旧名前空間/対象モジュール/登録/資源の保持、終了処理の逆順・失敗分だけの再試行・部分適用を検査します。tools/test_extension_examples.pyは日英原稿の直接記述・モジュール・資源終了・協調取消例を実行します。check_standard_windows.pyのtest_native_extension_reload_resources_and_failuresとtest_native_extension_reload_waits_for_documented_jobは専用非表示Windows領域の実MainWindowで、連続Reload、コマンド/キー/新一覧への付替え、旧参照の解放、実HWND/タイマー/Hook/ステータス層の解除、終了時の解放、実JobQueueの取消・完了待ち・再試行を確認します。既存test_native_launcher_reload_uses_live_keymaps_and_providersとJSON編集系の検査でINI非再読込・入力保持・JSON優先/独自登録保持を照合します。通常デスクトップへの入力・実IME・可視表示の検査とは区別します。
+
+### 公開属性と候補窓の境界
+
+JobItem.argsはtools/test_import_cleanup.pyで、Shell／URL各経路の生成時の属性不在・例外本文／name／obj、実行時クラス・生成入口、info.argsと同じオブジェクトのenqueue、生成→キュー取得→enqueueの順を検査します。通常・リスト変更・info側差替え・job側差替え・tuple・空列の12条件で、ワーカー実行時の引数とShell整形／URLエンコードを確認します。Shell起動とキューは代替し、実子プロセスの受信引数・作業フォルダー・表示状態は既存のtest_dynamic_arguments_reach_child_unchangedとtest_shell_arguments_workdir_alias_and_view_modesで別に検査します。
+
+JobItemのヘルプ状態はtools/test_import_cleanup.pyで、生成時の属性不在と例外本文／name／obj、実行時クラス・生成入口、enqueue前のNone／False初期化、完了時の状態再取得を検査します。tools/test_gui_drawing.pyでは実JobQueueを使い、メイン／コンソールからのヘルプ成功・欠損・ディレクトリ・stat失敗・起動失敗・途中消失・取消と、成功通知によるコンソール非表示維持／既存エラーの表示要求を確認します。ブラウザー起動・stat失敗・描画窓は代替し、実ブラウザーや可視GUIの検証とは区別します。
+
+getAppExePathの開発用sys属性はtools/test_import_cleanup.pyで、通常値・属性なし・動的属性の成功／不在・途中消失・動的属性の2回目失敗を変更前の直接参照と比較します。最適化レベル0／2と事前実行0／1／2／3／5／10／100回の84条件で、返却値・同一性・属性取得とフォールバックの回数・例外本文／name／objを確認します。Python 3.15.1では途中消失時の例外情報が事前実行回数でも変わるため、比較条件を揃えます。型ガードはhasattrだけを実行し、分岐内の直接属性参照を保持します。
+
+MainWindowの入力欄参照はtools/test_mainwindow.pyのCommandLineEditContractsで、ContextMenuの独立した3取得、closeList／x取得中の交換・解除、引数なし／パス不存在時の非取得、RemoveHistoryの1取得、None時の例外本文／name／obj、真偽判定の非実行を検査します。test_native_commandline_edit_reacquisition_and_history_removalは専用非表示Windows領域で未接続時の例外、実入力中の欄交換後の座標、Ctrl+Kによる履歴削除と入力終了後の復元を確認します。Shellメニューの起動先だけを代替し、実Shell表示・物理入力の検証とは区別します。入れ子の復元は既存の入力セッション単体・Windows統合で確認します。
+
+LineInfoの初期値なし宣言はtools/test_gui_drawing.pyのメタデータ回帰で、未設定属性の例外本文／name／obj、呼出しごとのクラスと行ごとのオブジェクト、後のLine更新から独立した値、可変性と追加属性、保持した情報が破棄済みWidgetを延命しないことを確認します。
+
+TextWidget.filterLinesはtools/test_gui_drawing.pyで、通常／逆方向の選択と異なるideal_column、全保持・空行削除・途中／連続／全削除、右端行頭・最終行・末尾改行・空文書・Unicode、行全体のコールバック順と選択範囲・Undo／Redoを検査します。LineInfoの行別スナップショットと可変性、読取専用時の本文保護と各行の通知、コールバック例外後のUndo確定と正常終了通知の非実行も確認します。test_native_filter_lines_whole_rows_and_undo_redoは専用非表示Windows領域の実TextWidgetで12条件の本文・コールバック順・選択範囲・Undo／Redoを検査し、物理入力・実IMEとは区別します。
+
+TextWidget.closeListの遅延破棄はtools/test_candidate_keymap_contracts.pyのCandidateLifetimeTestsで、旧候補の強参照、50ms指定、配送時のdestroy取得、現行候補の非操作、未設定属性の例外、登録失敗時の候補保持と元例外を検査します。test_native_text_candidate_delayed_owner_cleanupは専用非表示Windows領域で通常配送・配送前のWidget破棄・親窓破棄・登録前の失敗の4条件を扱い、実HWND／TextPlaneの解放とコールバック解放を確認します。登録失敗だけは代替メソッドで注入し、物理入力・可視GUIとは区別します。
+
+MouseInfoの条件付き属性はtools/test_gui_drawing.pyで、モード別の属性有無・追加値の同一性・未設定属性のAttributeError本文／name／objを検査します。TextWidgetの実Point・Lineと代替Windowを使い、文字ドラッグ、単語の左右・内側へのドラッグ、行選択の上下ドラッグとボタン解放後の解除を確認します。これはハンドラの直接呼出しであり、物理マウス操作とは区別します。
+
+候補窓再利用時の補完開始位置はtools/test_candidate_keymap_contracts.pyのCandidateReuseTestsで、長いパスの切替えによる開始位置の増減、同じ窓・配置での反映、選択範囲とUndo／Redo、項目設定前後の失敗時の基点復元・準備情報保持・再試行を検査します。test_native_edit_candidate_reuse_updates_completion_baseは実文字幅計測と自動横スクロールで同じ画面位置になる条件を作り、実候補HWNDへ下キーをPostMessageして、パス前半の保持・選択範囲・Undo／Redoと失敗後の再試行を確認します。
+
+EditWidgetの候補差替えはtools/test_candidate_keymap_contracts.pyのCandidateReplacementTestsで、無効化・生成・遅延登録前後・項目設定・早い遅延コールバックの失敗、旧窓の有効／無効状態と基点・配置・準備情報の保持、新窓解放、後始末失敗時の元例外と複数noteを検査します。test_native_edit_candidate_replacement_failure_restores_ownerは専用非表示Windows領域の実EditWidgetで生成・遅延登録前後・項目設定・タイマー配送後の失敗を注入し、旧HWNDの存続と状態復元、新HWNDの破棄、残存コールバックの非作用、再試行と正常な50ms遅延破棄を確認します。
+
+両CandidateWindowの生成失敗はtools/test_candidate_keymap_contracts.pyのCandidateConstructionTestsで、基底生成前後の所有境界、属性設定／初回setItemsの失敗、破棄失敗時の元例外・note、KeyboardInterrupt／SystemExitと正常時の非破棄を検査します。test_native_candidate_constructor_failure_releases_resourcesは専用非表示Windows領域で初回setItems／paintへ例外を注入し、実TextPlaneの破棄・実HWNDの消滅・親窓と有効状態の維持・次の候補窓の生成と選択を確認します。TextPlaneは実ネイティブ資源へ委譲する記録用プロキシで破棄回数を数えます。
+
+tools/test_candidate_keymap_contracts.pyは旧TextWidget候補のEnter／Tabによる文書・Undo・現行候補の非変更と旧窓だけの遅延破棄とGCを無効にした状態での旧窓解放、keymapサンプルのlist／tuple・空列・down／upの送信順・要素同一性・登録値保持・フック継続を検査します。OSフックは代替してインストールせず、入力送信も代替します。test_native_text_candidate_stale_queued_keysは専用非表示Windows領域の実旧HWNDへキーをPostMessageし、差替え・旧一覧の範囲外・空候補・自動確定後に配送します。旧イベントの非作用と遅延HWND破棄、現行窓へのキュー配送による通常確定・共通部分補完を確認し、物理入力から自然に同じキュー条件が発生する頻度の検証とは区別します。
+
+TextWidgetの共有色宣言はtools/test_gui_drawing.pyのRgbBoundaryTestsと既存描画検査で確認します。初回更新前の属性不在とAttributeErrorのname／obj、取得途中の例外と部分代入、None・範囲外成分の無変換保持、選択色の計算失敗時の既存非アクティブ色を検査します。実装用importがckitへ再公開されないことも同回帰で確認し、既存の公開名をtest_import_cleanup.pyで、実TextWidgetの編集・Undo／Redo・描画を既存の非表示Windows検査で確認します。
+
+### 引数APIと公開値
+
+引数の保持契約はtools/test_argument_contracts.pyで検査します。選択なし／範囲外のdropと新規・削除・複製、親復帰と旧一覧破棄の時点、所在フォルダの真偽判定・パス変換回数と解決不能時の無動作、通常編集のNone本文とUndo／Redo・矩形編集の属性例外・読取専用時の先行判定、候補準備情報の成功／失敗／非操作時の保持・解除、整数補完フラグの無変換の引渡し、正規表現のコンパイル／登録順、実レジストリの既定値名None／空文字列の読取りを扱います。GUIは既存テストの代替資材を使います。test_native_optional_text_and_prepared_candidate_contractsは専用非表示Windows領域で実TextWidget・候補HWNDのNone本文、Undo／Redo、未準備例外と準備情報の保持・消費を検査します。実App Paths検索・起動、補完設定、一覧操作は既存の対象別Windows統合で確認し、可視GUI・物理入力・実IMEとは区別します。
+
+dataPathの利用は、test_import_cleanup.pyで公開getter／setterの同一性・初期None、10箇所の取得／変換回数・空文字列／bytes／PathLike／不正型の結果と例外、起動時3取得のディレクトリ作成／sys.path追加／INIパス保持の順序、実モジュールimport時のJSON_PATH固定を検査します。アプリ側の_require_data_pathは取得済みの値を変換せず返し、Noneだけを従来のTypeErrorとします。joinとabspathで異なる例外文も比較します。Reload・Config・編集保存は既存の非表示Windows検査で別に確認し、可視GUI・物理入力・実IMEの検証結果とは区別します。
+
+### サブプロセスとクリップボード
+
+SubProcessのEOF・資源管理はtools/test_subprocess.pyで、EOF時に空文字を通知せずwaitを1回行うこと、生成したstdin/stdoutの解放、起動失敗・読取り／復号／コールバック／終了要求／waitの例外・KeyboardInterruptと後始末失敗時の元例外保持を検査します。既存の公開p差替え・Noneストリーム・起動前／中／後の取消と再入・同時取消も維持します。実Windows子プロセスでは出力・終了コード、stdout/stderrを閉じて0.8秒生存する子のEOF後wait・最終終了コード・空通知なし・親CPU時間が経過時間の1/4未満、コールバック例外時の即時解放、起動失敗と窓なし子の終了非保証を確認します。check_standard_windows.pyのtest_native_subprocess_startup_and_running_cancelは、専用非表示Windows領域で実WM_CLOSEの起動中／通常読取り中／EOF後wait中の取消とUIフック復帰・パイプ解放を検査します。
+
+クリップボードはtools/test_clipboard.pyで固定API型、所有権、確保・Lock・Open・Empty・Set失敗、読取り／転送／APIの例外・中断時のUnlock/Close/Freeを検査します。失敗分岐はAPI代替による障害注入です。同ファイルの専用非表示Windowsステーションでは、実CF_UNICODETEXTの空文字・日本語・補助平面文字・単独サロゲート・末尾CRの往復、別スレッドの実OpenClipboard保持による競合とGlobalFree成功・元内容保持、形式0を実SetClipboardDataに渡した拒否と解放、テキストなし、共有windll.GlobalLockを別型にした状態での3スレッド各50回の取得／設定を確認します。通常デスクトップのクリップボードには触れません。tools/test_import_cleanup.pyはOS呼出しだけを代替し、UTF-16のNUL終端までの転送量と隣接メモリの非変更を検査します。コンソール経由の実コピーは既存の非表示Windows検査で確認します。
+
+SubProcess・クリップボードの仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPのdocs/ja/classckit_1_1ckit__subprocess_1_1_sub_process.htmlとdocs/ja/group__misc.html、およびdocs/enの同名ページで、__call__・getClipboardText・setClipboardTextの説明に表示欠けがなく読めることを確認します。
+
+### 個別スクリプトの実行例
+
+同梱Pythonで対象スクリプトを個別に実行します。例:
+
+```powershell
+.\Python315\tools\python.exe -B tools/test_json_commands.py
+.\Python315\tools\python.exe -B tools/check_text_format.py
+```
+
+### 領域別の検査範囲
+
+#### Windows引数取得・共有読取ロック
+
+tools/test_misc_resources.py（最終配布は--package dist/ReCraftLaunch）。ctypes API代替で引数取得の成功・NULL・呼出し例外・コピー途中の例外／中断とLocalFree回数、失敗後の再取得・sys.argv対応・同一可変リストのキャッシュを検査。ロック成功・Win32例外の同一性・呼出し元の捕捉と無出力、実Windowsの引数取得・独立ハンドルによるロック競合・解除後の復帰も確認。人力確認は不要。
+
+#### 通常INIの保存・読込
+
+tools/test_ini.py、tools/test_import_cleanup.py。実Windowsの既存CRLF読込み・UTF-8／LF保存・初回保存、書込み／flush／fsync／close／置換／ミューテックス生成・待機失敗での元INI保持・dirty保持・通知前の一時ファイル／ハンドル解放、相対・絶対／大文字小文字表記の排他対象一致、ロック保持中もロックファイルを作らないこと、別プロセスの読込／保存が置換後も同じミューテックスを待つこと、実待機タイムアウト、読取専用／開いたファイルによる置換失敗、置換前のプロセス強制終了後の旧INI保護、待機者による放棄されたミューテックスの取得と保存。
+
+#### 静的INI定義と現行動作
+
+tools/test_ini_settings.py。全静的通常設定のセクション・キー・型・既定値、欠損／登録済み／不正値と文字列取得、整数の生文字列保存とdirty判定、現行形式の既存CRLF読込み・UTF-8／LF保存と未知キー・動的履歴の保持、専用DEFAULTSとの対応、静的な直接参照の残存、テーマ優先順位とchoice色のフォールバック。
+
+#### INI・テーマの初期化契約
+
+tools/test_ini.py、tools/test_import_cleanup.py。初期Noneとckit.ini再公開、未初期化時の既定値・AttributeErrorの内容／name／obj、未変更時の保存非実行と失敗時のdirty保持、テーマ再設定でのパーサー交換、読込み失敗の伝播、欠損色の通知と黒、不正色文字列のNone返却。
+
+#### 入力・設定適用
+
+tools/test_input_settings.py。値の検証、保存・取消、履歴障害時の保持、Reloadと独自キー、初回custom.py失敗時の標準復旧、両フックのcallable検証、独自読込・適用・終了のSystemExit／KeyboardInterruptと成功通知抑止、終了の逆順継続・失敗分再試行、終了失敗時の標準機能への退避と旧一覧フック解除。
+
+#### MainWindowの入力仲介・ステータス・履歴一覧
+
+tools/test_mainwindow.py。候補統合・置換位置・キー優先順位・受付順、Reload後の共有状態参照、独自層の登録／解除・描画抑止、メッセージ期限の置換・繰返し解除、空履歴のDel・選択・取消・部分失敗時の親復帰と一覧破棄。GUI・タイマーは代替。
+
+#### MainWindowのモニター番号
+
+tools/check_standard_windows.py。専用非表示Windows領域の実MainWindowと代替モニター情報で、1台／2台の正常番号・負数・上限以上について起動時DPI照会と保存位置復元を検査。不正番号は0番と既存の原点復帰へ合わせ、INI自体は変更しない。物理モニター操作とは区別。
+
+#### 入力セッション・一時フック・同期ワーカー
+
+tools/test_input_session.py。部分的な適用失敗・入れ子のLIFO復元、初期化／ハンドラ／ループ／破棄／後処理の障害注入、Enter/Esc・選択・履歴・予定コマンド、終了後の文字列／空文字列の入力先有無・外側への反映、非文字列・実行順・例外後の継続、キャンセルと例外・終了待ちの契約。GUIは代替。
+
+#### IPCのコマンド実行
+
+tools/test_ipc_execute.py、tools/check_standard_windows.py。前者は実ハンドラによる登録・JSON別名・関連付け・OS検索・URL・ファイル／フォルダー、引数・mod=0・実行回数・受付後の実行順・例外通知／後続実行・未知入力と通常入力の終了後実行を検査。GUI・キュー・Shell起動は代替。後者は専用非表示Windows領域で別プロセスから実WM_COPYDATAを送り、独自関数の実行、JSON別名とOS検索から実JobQueueを通した子プロセス起動・受信引数・起動回数、編集中の入力・選択・履歴の保持を確認。通常デスクトップの物理操作・表示・実IMEとは区別。
+
+#### JSON・編集・複製・ドロップ
+
+tools/test_command_store.py、tools/test_json_commands.py、tools/test_command_editor.py。共通データ処理と経路別の検証・通知、登録解釈、空欄行、保存・復帰・失敗時の保持。既存CRLFの読込み、UTF-8・LFでのJSON保存と文字列内の改行値の保持も確認します。
+
+#### コマンド一覧の操作・寿命
+
+tools/test_command_list.py、tools/test_list_navigation.py。読込・保存・反映コールバック・配置・表示・ループ・結果取得・親復帰・破棄の障害、保存候補の独立性と再試行、取消／保存後の選択、検索・0件復帰・操作抑止。前者のGUIは代替、後者は非表示ネイティブWindowで表示・活性化等を代替。
+
+#### 編集データモデル
+
+tools/test_command_draft.py。GUIを生成せず、新規・既存・空欄編集、改名と重複、Modifier別の値保持・未登録操作・Link検証、スナップショットと保存候補の独立性。
+
+#### 標準コマンドの登録・再構築・OS検索
+
+tools/test_command_registry.py、tools/test_command_platform.py、tools/test_json_commands.py。登録層・所有範囲、同名・別名・循環経路のValueError通知と実行後の回復、独自リスト操作と補完、失敗時の状態保持、引数・修飾操作・昇格委譲、Windows引数解析と検索順。外部起動・レジストリ読込は代替。
+
+#### 標準コマンド・入力セッションのWindows統合
+
+tools/check_standard_windows.py。実外部プロセスの引数・作業フォルダ・表示状態、実クリップボード、実App Paths登録と実行、ネイティブGUI・キー／文字イベント・循環エラーのコンソール通知と次の実行・保存／取消／一覧遷移、別プロセスからのモーダル中IPC。入力初期化／ループ／破棄失敗後の復帰、候補・選択・入れ子と予定コマンドの再入力、最上位終了後の文字列／空文字列と入力・フックの解放、ワーカー実行中のUI処理とEscキャンセル後の入力復帰。
+
+#### 起動時の言語選択
+
+tools/test_language_startup.py。ソース／配布ZIP、保存先2通り、日英・未設定・不正値、GUIのimport時定数、IPC軽量経路。
+
+#### 設定メニュー・入力案内
+
+tools/test_config_menu.py。択一設定の値域・初期選択・同値確定・取消、個別更新と保存回数、項目形式・順序・現在値、階層復帰・動的な項目減少・親の終了条件。
+
+#### 修飾キー・Alt+Enter
+
+tools/test_modifier_settings.py、tools/test_altenter_settings.py。INI往復、引数化、URL・パス、保存・取消・例外復帰。
+
+#### 保存先・拡張
+
+tools/test_exe_settings.py、tools/test_app_identity.py、tools/test_input_settings.py。初回指定、切替、scripts/の作成・import、拡張の明示適用・適用順・Reloadキャッシュ、既存内容の保持。reclnch_exe.iniの既存CRLF／UTF-8 BOM読込みと、BOMなしUTF-8・LFでの保存も確認します。
+
+#### custom.py失敗時のWindows統合
+
+tools/check_standard_windows.py。専用非表示Windows領域の実MainWindowで初回読込失敗6種類の標準キー・組込コマンド・一覧と修正後Reload、実窓・Hook・タイマー・ステータス層の保持／解放、SystemExit／KeyboardInterruptと不正一覧フックの拒否、終了例外後の破棄を確認。部分解放後の旧キーによる破棄済み窓参照を再現し、退避後の実キー配送・一覧、失敗分だけの再試行・独自設定復帰・終了時解放を検査。停止前に終了処理が失敗した独自タイマーは依存先を参照し続ける制約も実タイマーで確認。可視表示・物理入力・実IMEとは区別。
+
+#### 拡張ガイドの実装例
+
+tools/test_extension_examples.py、tools/check_standard_windows.py。日英原稿のコード一致、名前・キーの引数、設定読込とimportキャッシュ、入力・補完・メニュー・フォーム、ワーカー・ジョブの完了／取消／例外。一時TextWidget窓は原稿を隔離保存先へ置き、実キー/文字メッセージで補完・Undo/Redo・選択・全文出力・取消、ループ例外・親状態保持・HWND破棄・文書通知解除を検査。隔離検査と非表示Windowsの実部品検査を区別。
+
+#### pyautoネイティブAPI文書
+
+tools/test_native_pyauto_documentation.py。実Input.sendの送信先をIAT差替えにして16入力ヘルパーとUTF-16単位・Down/Up・ホイールを検査。仮想画面の原点/寸法を代替し、全移動/ボタン操作の負座標・端・C int境界・VIRTUALDESKとホイール非移動を照合。原稿のdestroyだけの終了例と9属性解除も確認。物理入力は送信しない。
+
+#### ckitcore/clnch_nativeの文書
+
+tools/check_standard_windows.py、tools/check_docs.py。新原稿を隔離保存先へ置き、実Window/PlaneでEsc・閉じる・構築/ループ失敗時の破棄と親状態保持を検査。実ファイル列挙の引数・なし/エラー・キャッシュ再利用/更新を確認。生成時はネイティブ登録表からメソッドと構築入口、通知・属性の掲載を照合。通常デスクトップやユーザーファイルは使わない。
+
+#### IPC・識別・コンソール復帰
+
+tools/test_app_identity.py、tools/test_console_visibility.py。識別・送受信入口、表示・入力・モーダル復帰。実IPC操作は別。
+
+#### 表示開始・描画・フォント
+
+tools/test_window_show.py、tools/test_gui_drawing.py、tools/test_font_list.py。初回バッファ、配色、選択・コピー、プレビュー・リソース。
+
+#### コンソールのログと表示行
+
+tools/test_consolelog.py、tools/test_gui_drawing.py、tools/test_variable_layout.py。GUI非依存の保持・折返し・差分再利用・コピー（LF/CRLF・単独CR・全write分割位置・部分/逆方向選択）、行削除時のスクロール／選択補正、更新中の描画、例外後の再試行、サイズ・フォント・DPI。
+
+#### ネイティブFont
+
+tools/test_native_font.py。UTF-16名の31単位境界・過長／NUL拒否、引数・整数範囲、生成／再初期化／参照所有・破棄、子プロセスの実GDI上限到達による生成失敗と回復。
+
+#### ネイティブハンドル・Shell・色選択
+
+tools/test_native_shell.py。ビルド直後のclnch_native／ckitcore／pyautocoreを直接使用。ポインタ幅のHWND入出力・親指定・実IPC・引数例外・キーボード状態バッファ長、COM代替とプロセス内IAT差替えによるShell／メニュー取得失敗・途中PIDL／参照／HMENU解放・WndProc復元、専用非表示ステーションで実Shellメニュー取消・コピーとCF_HDROP、実色選択ダイアログ確定／取消。
+
+#### ネイティブ入力フックの配送・寿命
+
+tools/test_native_hooks.py。実pyautocoreのKeyHookProc／MouseHookProcを直接呼出し、キー・移動・ボタン・縦横ホイールの引数、None・0・非ゼロ・C int境界・不正型・例外後通過と再呼出し、自己合成入力除外を検査。destroy/dealloc・全9参照・再入・旧所有者・構築失敗はIAT代替と実受信窓で確認。専用非表示デスクトップでは実OSフック登録/解除とクリップボード監視解除も照合。通常デスクトップへ入力を送らない。
+
+#### ネイティブLine・TextWidgetの文書接続
+
+tools/test_native_line.py、tools/test_gui_drawing.py。本文とCR/LF/CRLF、Unicode・NUL、属性・参照解放・再初期化・引数例外、bgの0～3／bookmarkの0～7とbool・int派生型、型／C long桁あふれ／値域の例外・失敗時の全属性保持・正常設定への復帰、Lineを代替しないTextWidget描画、選択初期化前の文書確保、文書差替え・同一文書の再設定・共有・破棄時の通知、通常／まとめたUndo・Redoと変更回数の未確定状態、読込み後のモード確定・大容量閾値・読込み失敗・モード差替え時の構文キャッシュ無効化。
+
+#### EditWidgetの補完候補
+
+tools/test_gui_drawing.py、tools/test_input_session.py。補完なし・空候補・Shift／通常キー配送・Tab共通部分補完・Esc・候補削除・ハンドラ無効化、同じ配置での再利用と旧候補だけの50ms遅延破棄、構築途中の候補解放。
+
+#### RGB演算の入力
+
+tools/test_gui_drawing.py、tools/test_import_cleanup.py。色見本の画像生成バイト列、両CandidateWindowの枠色と取得順序、None時のTypeError・ネイティブ生成前の失敗、選択色計算と更新途中の保持状態、範囲外数値を補正しないこと、getColorの既存返却契約。
+
+#### 一覧・確認・可変配置
+
+tools/test_list_navigation.py、tools/test_msgbox.py、tools/test_variable_layout.py。キー・検索、取消、折返し、DPI・クリック・ドロップ・IME矩形、Dialogの未構築／非表示部品の入力非配送・フォーカス残存時のTab移動・値保持と再表示、CheckBox前方の高さ変更時の再配置、Choiceの幅縮小／拡大・実フォント変更での折返し高さと後続配置・スクロール範囲・部品再利用、ListWindowの検索回ごとの参照共有・検索終了時のフック復元・再開始。
+
+#### 文言・言語・生成処理
+
+tools/test_strings.py、tools/check_language.py。定義、埋込み、ckit供給、共通library.zipの日英定義・日英文書生成・単一archiveの不一致拒否。
+
+#### バージョン
+
+tools/test_version_info.py、tools/test_strings.py。形式・範囲、ヘッダー生成と更新抑止、隔離ZIP読込、ヘルプ置換、archiveの版不一致拒否。
+
+#### 共有API・スレッド
+
+tools/test_import_cleanup.py、tools/test_threadutil.py。公開名・整形・比較・Lexer・資源解放、Cronの取消・終了待ち。
+
+#### JobQueueの停止・終了待ち
+
+tools/test_threadutil.py。タイムアウトと強制回収を設けた実スレッドで、未開始／完了済み／実行中のpause、restartと停止中join、pause→cancel→join、停止ゲートでの取消、協調的終了、逐次実行とcheck／join呼出し元での完了通知、例外後の継続を検査。
+
+#### デフォルトJobQueueへの投入
+
+tools/test_import_cleanup.py、tools/test_altenter_settings.py、tools/test_json_commands.py、tools/check_standard_windows.py。Alt+Enter・直接ファイル／URL・ShellExecute／URLコマンド・ヘルプの6経路で、取得とJobItem生成の評価順、取得／投入1回、未生成時のAttributeErrorと履歴／quit非操作、キュー非自動生成を検査。非表示Windowsでは実Alt+EnterとShell起動の子プロセスを確認。
+
+#### SyncCallの同期要求
+
+tools/test_threadutil.py、tools/check_standard_windows.py。Event・Barrierで受付順を制御し、生成元での直接実行、ワーカー要求の生成元実行、Noneを含む返値、例外の同一性・原因・元のトレースバック、BaseException後の待機解除と後続要求、複数ワーカーのFIFOと結果分離、実行中の追加要求、空checkの即時復帰を検査。非表示Windows統合では実MainWindowのタイマーからの実行・例外後の継続と既存の接続エラー通知を確認し、ネットワーク接続APIだけを代替。
+
+#### サブプロセス起動・キャンセル
+
+tools/test_subprocess.py、tools/test_input_session.py。Eventで起動前／Popen中／生成直後／出力読取中の順序を制御し、要求保持・同時要求の集約・再要求・終了後・生成／終了要求失敗を検査。実子プロセスの出力・終了コードとウィンドウなしのベストエフォート契約、代替GUIで早いEsc・無効設定・エラー通知・フック復元を確認。
+
+
+### INIの読込失敗と補完設定
+
+通常INIの読込み失敗はtools/test_ini.pyで先頭／途中／末尾の構文破損・重複、UTF-8・途中読取り・権限・ロック失敗、保存抑止中の元バイト保持、修復後の再読込みと保存復帰を確認します。実Windowsの共有拒否による読取り失敗と、通常の書込み障害後の再試行も区別します。check_standard_windows.pyのtest_native_ini_read_failure_protects_settings_and_recoversは実MainWindowの生成・configure、日英のコンソール案内と自動表示要求、非アクティブ化・終了・設定メニューでの保存抑止、修復後の新規窓での履歴読込みと保存を確認します。test_native_first_ini_startup_saves_settings_and_historyは未作成INIで同じ起動・保存経路を検査します。通常デスクトップの可視品質・物理操作とは区別します。
+
+INI取得の型・既定値・不正値とdefault未指定時の例外、auto_completeの文字列0／1の保存往復はtools/test_ini.pyで確認します。tools/test_mainwindow.pyは欠損・不正値で整数0、設定済みで整数0／1、Config変更・取消後の次セッションへの引渡しと追加writeがないことを検査します。test_native_auto_complete_default_and_config_changesは実MainWindow・EditWidgetと文字メッセージを使い、初期OFF・ConfigでON・取消・OFFにした後の候補自動挿入を確認します。test_native_completion_modes_exclude_history_files_and_providersは自動補完OFF／ON×補完候補off／commands／standardの6条件で、履歴・登録名・実ファイル／フォルダ・独自候補の範囲、不要な列挙の非実行、文字入力・Tab・候補操作キーを照合します。test_native_auto_complete_runtime_switch_closes_candidates_and_keeps_executionは保存初期値0／1と全候補モードで、キー割当経由のOn／Off／Toggle、OFF時の候補閉鎖、入力・選択・履歴・INI初期値の保持、再ON後の補完復帰、OFF中の通常文字入力・Enter実行・引数原文・履歴記録を検査します。tools/test_gui_drawing.pyとtest_input_session.pyで公開EditWidget・独自commandLineの既存候補契約も確認します。設定の択一一覧だけを代替し、物理入力・実IMEの検証とは区別します。
+
+### モーダルとConfigのWindows統合
+
+モーダル画面の例外安全性はtools/test_modal_lifecycle.pyで代替GUIによる配置・表示・部分無効化・ループ・結果取得・on_shown／on_saved・連続する復帰失敗、元から無効な親、KeyboardInterrupt／SystemExitと最初の例外の保持、各入力部品／Planeの破棄続行を確認します。共通_modal_dialog_scopeの入れ子の復帰順と、子生成中の親状態の変化に対して生成前の有効状態を使うことも検査します。既存の編集・設定・一覧テストは保存／取消・選択・キー操作の契約を引き続き扱います。
+
+check_standard_windows.pyのtest_native_modal_failures_cleanup_and_reopenは、設定・ホットキー・置換元一覧・基点／Alt+Enter入力・確認・コマンド編集／一覧・フォント・履歴の10経路で配置・表示・無効化・ループ・結果取得・再有効化・アクティブ化・破棄と複数の後処理の失敗を注入し、実HWND破棄・親状態・再表示を確認します。test_native_modal_partial_constructors_release_owned_resourcesは構築中の配置／部品／TextPlaneと行別フォント設定の失敗、生成済み入力部品の破棄を検査します。test_native_nested_editor_keeps_outer_parent_disabledとtest_native_already_disabled_modal_parent_stays_disabledは、一覧→編集の正常／コールバック失敗でメインを無効に保つこと、直前の一覧の復帰と10経路の元から無効な親を扱います。ウィンドウ操作の一部は実APIを呼んだ後で例外に置き換え、ループと結果取得は障害注入用に代替します。通常のキー／文字イベント・保存／取消・モーダルIPCは既存の専用統合検査で確認し、可視画面の切替や自然なフォーカス復帰とは区別します。test_native_modal_key_callback_error_allows_cancel_and_reopenは実キーの独自ハンドラ例外をネイティブ側が通知した後も取消でき、再表示後のEnterが正常に動くことを確認します。
+
+ConfigのWindows統合はtools/check_standard_windows.pyの設定階層・言語・ホットキーの検査で確認します。実一覧へのキー入力、階層間の選択保持・現在値更新、言語のINI保存・取消・次回指定表示、Ctrl+Sからの入力・選択・履歴・独自キーの保持、ホットキー専用画面の確定・取消・再登録、親の有効状態を検査します。非表示領域での入力保持検査は外部非アクティブ化によるクリアをOFFにし、通常デスクトップの自然なフォーカス復帰とは区別します。既定クリア設定でのCtrl+Sの契約はtest_input_settings.pyの代替GUI検査でも扱います。
+
+### 入力仲介と一覧結果
+
+MainWindowの仲介はtest_native_launcher_reload_uses_live_keymaps_and_providersで入力中のReload後の独自キー・新しい入力プロトコル・予定コマンドと履歴を確認します。test_native_status_layer_timers_and_message_replacementは実タイマーによる独自層の描画・登録解除と、期限あり／なしの置換・期限切れを確認します。test_native_history_empty_delete_selection_and_failure_cleanupは実一覧へのDel・Enter／Escと、例外時の親の有効化・HWND破棄を確認します。履歴選択後の入力呼出しは記録用に代替し、可視フォーカス復帰の自然さとは区別します。
+
+一覧結果の共通化はtest_list_navigation.pyで公開return_modkeyの動的変更・整数／タプルの同一性・検索中の元インデックス変換・修飾キー・取消とgetResult例外を検査します。test_command_list.pyとtest_mainwindow.pyはタプル結果での編集引継ぎ・履歴削除／選択／取消と仮想呼出し回数、test_config_menu.pyは選択0／1・取消とbool保存を検査します。test_native_list_modifier_tuple_search_and_configは専用非表示Windows領域の実HWNDとキー／文字メッセージで、検索結果・0件・取消、動的にタプル返却へ変更したConfigのON／取消／OFFと破棄を確認します。修飾キー保持の4は検査中に設定した値で、物理入力・実IMEの検証とは区別します。
+
+### Widgetの寿命と描画
+
+WidgetのIME・所有資源・進捗・日時はtools/test_gui_drawing.pyのWidgetLifecycleTestsで、非フォーカス時の親非操作、再フォーカス、同値進捗への復帰、タイマーの重複防止・非表示・破棄後、入力list/tupleの独立性、ColorWidget/TimeWidgetの部分構築と複数解放失敗、固定22×1セルの移動・内部IME矩形、暦日・うるう年・時刻・未完成入力を検査します。TimeWidgetは初期値とgetValueで検証し、不正値を補正しません。getValueのValueError時は呼出し元が入力継続を可能にします。内部欄/Planeの個別解放は行わず、部品のdestroyを使います。現行Dialogの組込項目はEdit/CheckBox/Choice等であり、ColorWidget/TimeWidgetの個別解放呼出し元はありません。
+
+check_standard_windows.pyのtest_native_popmenu_optional_limits_and_cleanupは、両軸省略・片軸省略・整数指定と空一覧/空ラベル/長い項目、ステータス、int/tupleの取消結果の48条件で、実一覧の作業領域制限・親復帰・HWND破棄を検査します。test_native_widget_timer_ime_and_moveは実タイマーの配送・停止・再開・破棄後の所有参照解放、実親APIへのIME指定値・移動後の矩形、ColorWidgetの表示/非表示によるオフスクリーン描画画素、TimeWidgetの内側候補HWNDの解放を確認します。test_native_widget_partial_construction_cleanupは構築途中と初回paintの例外で、実Planeと候補HWNDが解放されることを確認します。構築失敗だけを限定注入し、実IME変換・物理入力・目視の評価とは区別します。既存のtest_modal_lifecycle.py、test_variable_layout.py、test_extension_examples.pyと関連するモーダル/原稿例の非表示Windows検査も変更に応じて選びます。
+
+入力・ウィジェット描画の局所回帰はcheck_standard_windows.pyの独立した3検査で確認します。test_native_input_status_width_matches_paint_and_resizeはstatusなし・半角・全角、初期編集幅、更新時の拡縮、最小18／最大40セル、アクティブ／非アクティブ描画で空白込みのstatus幅と実EditWidget配置を照合します。入力ループは直接駆動に代替し、実ネイティブ文字幅計測・窓サイズ・描画を使います。test_native_time_arrows_select_destination_and_keep_endpointsは6欄×左右の12条件で移動先の全選択・移動元の選択保持・両端の非移動・内部フォーカスと値保持を確認します。test_native_color_label_width_stays_inside_allocationは幅0〜7／20セルとフォーカス有無で、実putStringへ渡すラベル幅が非負かつ残り領域内であることを確認し、4セル以上では右隣2セルのオフスクリーン画素が変わらないことも照合します。固定4セルの色見本の寸法は変更しません。専用非表示Windowsの検査であり、目視の読みやすさ・物理入力・実IMEの評価とは区別します。
+
+ColorWidget・TimeWidgetの日英API説明を変更した場合の人力確認は、最終配布物のdocs/ja/classckit_1_1ckit__widget_1_1_color_widget.html・classckit_1_1ckit__widget_1_1_time_widget.htmlと対応するdocs/en/のページを開き、ラベル幅と左右移動の説明が欠けず読めることに絞ります。
+
+### 型宣言とlint
+
+popMenuの型宣言を変更した場合は、tools/check_popmenu_types.pyをPyrightで解析します。return_modkeyの未指定・False・True・bool変数と、位置引数・キーワード引数による戻り値の型を8条件で検査します。このファイルはPythonで実行するテストではありません。
+
+```powershell
+pyright --pythonpath Python315/tools/python.exe tools/check_popmenu_types.py
+```
+
+通常lintと除外監査の使い分けは[開発手順](development.md#ruffの除外と新規診断)を参照してください。例外・ロック・書込障害は、隔離環境での障害注入によって確認します。
+
+### 非表示Windowsと通常デスクトップ
+
+check_standard_windows.pyはWindows専用で、独立した非表示ウィンドウステーションとデスクトップ、設定用一時フォルダを使います。通常のデスクトップとクリップボードは操作しません。App PathsはHKCUへ一意な試験用キーを作成し、finallyで削除します。このキーへの書込み権限が必要です。検査名を引数に渡して失敗した項目だけ再実行できます。外部プロセスの終了も待ち、確認用GUI・ジョブを破棄します。実IMEの変換候補操作やUACの承認は代替しません。
+
+joinArgsはtest_import_cleanup.pyで空リスト・通常文字・空白・タブ・空文字列・Unicode・末尾バックスラッシュ・二重引用符と直前の複数バックスラッシュの単独／混在をWindows解析APIで往復検査します。CommandLineToArgvWの先頭は実行ファイル名として特別扱いされるため、ダミーの実行ファイル名を前置し、その後の引数を比較します。test_json_commands.pyはShellExecuteCommandの固定param・既定param・マクロ展開とパス項目の非引用を検査します。Windows統合のtest_dynamic_arguments_reach_child_unchangedは実子プロセスの受信引数、test_shell_path_placeholders_are_unquotedは空白を含む実行ファイルパス・末尾バックスラッシュ付き作業パスの%param%展開を確認します。既存のtest_shell_arguments_workdir_alias_and_view_modesとtest_shell_placeholder_and_child_context_defaultsも合わせて、固定／動的引数・別名・JSON・作業ディレクトリを確認します。
+
+test_native_subprocess_startup_and_running_cancelは実Popenの公開前と出力受信後に実Escメッセージを送り、保留要求と実行中要求の両方で既存terminateProcessによるWM_CLOSE、子ウィンドウの終了・終了コード、終了後の無送信とフック復元を確認します。試験用ワーカーも専用デスクトップへ接続し、子側はWM_DESTROYでメッセージループを終了します。Eventが順序を決め、タイマーはUI駆動と失敗時の回収だけに使います。通常デスクトップの物理キー・画面の見え方の確認とは区別します。
+
+test_native_list_status_optional_state_and_replacementは実ListWindowで、ステータスハンドラ後のレイヤー差替え、未登録時の例外、検索中のハンドラ非使用、空メッセージとステータスなしの描画を確認します。test_native_atomic_undo_endは実TextWidgetのまとめたUndo／RedoとBeginなしのEndの例外を確認します。代替コールバックによるcopy途中のUndo差替え・解除と例外の内容／name／obj、SubProcessの出力コールバックによる公開プロセス差替えとNoneストリーム、未登録ネットワークハンドラの通知は、test_gui_drawing.py・test_subprocess.py・test_import_cleanup.pyで別に検査します。実ネットワーク認証・物理入力・実IMEの検証結果とは区別します。
+
+test_native_rgb_blendingはblack／gray／whiteで実EditWidgetの描画と説明色を確認し、実テーマパーサーのfg／bgを不正色へ変更したときのTypeErrorと入力・選択保持を検査します。test_gui_drawing.pyでは両色の取得順、両方がNoneの場合、255を超える成分、描画前の失敗も検査します。INIの取得型を変更した場合はtest_ini_settings.pyで不一致／bool既定値・未対応の取得型の構築時拒否、None既定時の例外・dataclassの構築／凍結／比較／置換も確認し、Config・モニター境界・補完設定の既存非表示Windows検査を選びます。型検査（Pyright CLI）は、具体的な型関連の問題がある場合に限り、必要な範囲で実施します。通常の検証はRuffと関連テストを基本とし、PyrightをCIや配布検査の合格条件には追加しません。
+
+TextWidgetの文字位置・検索・タブ幅はtools/test_text_positions.pyとcheck_standard_windows.pyのtest_native_text_measurement_offsets・test_native_textwidget_unicode_positions_search_and_editで検査します。前者は代替UTF-16列一覧からPython文字位置への変換、sub_xと行末超の矩形位置、upperで長さが変わる文字の部分一致・元文字列での開始/終了境界・空検索・既存case/word/regex規則を確認します。後者はDebug／Releaseの実TextWindow/TextWidgetで、補助平面文字・タブ・全角文字のセル/ピクセル座標、クリック相当の直接イベント配送、前方/後方検索と選択、通常/矩形編集とUndo/Redo・文書通知解除を確認します。計測は負値とint両端を含むoffset・正のタブ幅、UTF-16列一覧の長さ/先頭/末尾、expandTabと部分文字列の連結幅との一致、0以下のタブ幅のValueErrorを扱います。低レベル列一覧はUTF-16単位を保ち、offsetを含まない相対幅を返します。物理マウス・可視字形・実IME変換の検査とは区別します。既存のtest_gui_drawing.py、test_extension_examples.pyと原稿例・atomic Undoの非表示Windows検査も関連範囲で使います。
+
+CommandListのtest_native_list_edit_handoffとtest_native_list_duplicate_edit_save_cancel_and_selectionは、編集への表示引渡し・保存／取消後の選択を検査します。test_native_list_search_delete_failure_retry_drop_and_cancelは実キー／文字メッセージによる検索、削除の保存失敗と再操作、ドロップ新規の取消を検査します。test_native_list_failures_restore_parent_and_destroy_hwndは配置・表示・ループ・結果取得・on_shown・親アクティブ化の障害を注入し、実HWNDの破棄と親の有効状態を確認します。削除確認・保存失敗通知は代替し、自然な画面切替やフォーカスの見え方は別に扱います。
+
+コンソールのネイティブ統合はtest_native_console_copy_eviction_resize_and_font、test_native_console_newline_copy_and_partial_selection、test_native_console_mouse_copy_and_clear_capture、test_native_console_stdio_auto_show_request_and_closeで確認します。実キー・マウスメッセージと隔離クリップボード、LF/CRLF・分割write・単独CR・補助平面文字・部分選択、1000行超過後の選択・読書位置、フォント倍率とサイズ変更、単語／全文コピー、クリア時の捕捉解除、stdout／stderrと実タイマーの自動表示要求・Escでの終了を扱います。非対話領域のIsWindowVisibleは通常デスクトップの表示と同じ条件にならないため、この検査は自動表示要求までを確認します。可視性同期の分岐はtest_console_visibility.pyで代替検査し、画面の見え方と通常デスクトップの自然なフォーカス復帰とは区別します。
+
+```powershell
+.\Python315\tools\python.exe -B tools/check_standard_windows.py
+.\Python315\tools\python.exe -B tools/test_language_startup.py
+```
+
+言語に依存しない共通機能のテストは一度行います。日英で文言以外の実行コードが一致し、各言語の文言・ヘルプ・版の組込み検査が成功し、文言・描画・配置を変更していなければ、英語配布物が存在するという理由だけで機能テストや手動試験を言語別に繰り返しません。文言・描画・配置・言語別コンテンツを変更した場合に、影響する画面や文書の翻訳・折返し・見切れなど、必要な言語固有の確認だけを追加します。
+
+### 起動時DPI
+
+MainWindowの起動時DPIはcheck_standard_windows.pyのtest_native_mainwindow_startup_dpi_recheckとtest_native_mainwindow_dpi_during_base_construction_and_resetで確認します。実HWND・TextPlane・フォントを使い、DPI照会と構築中通知を代替して、通常起動・推定と実DPIの差異・生成前通知・コンソール独自倍率を検査します。test_native_mainwindow_saved_monitor_and_monitor_changeは負座標の第2モニター選択と取り外し後の復帰を代替モニター情報で確認し、test_native_mainwindow_runtime_dpi_and_console_independenceは実WM_DPICHANGEDの送信と代替DPI照会で100%／150%／200%の往復、コンソールの独立倍率・ログ／選択保持、設定フォント変更を確認します。物理モニターの切替や実際のOS設定変更を検証した結果とは区別します。
+
+### Shell・色選択・ファイル操作
+
+tools/test_native_shell.pyは、clnch_native／ckitcore／pyautocoreのx64ビルド後に同梱Pythonで実行します。COM代替はSHGetMalloc／SHGetDesktopFolder／BindToObject／ParseDisplayName／GetUIObjectOf／QueryInterfaceの失敗と成功時NULL、CreatePopupMenu／QueryContextMenu／WndProc差替え／InvokeCommandの失敗を限定注入します。取得済み参照数、PIDL集合、実HMENUの破棄、親WndProc復元を検査します。高位32bitを含むHWNDは代替API入口で照合し、存在するWindowsウィンドウとして扱った結果とは区別します。現行コードにはIContextMenu3取得失敗時の基本IContextMenu表示へのフォールバックがなく、表示せず終了する挙動と基本参照の解放を確認します。
+
+chooseColorの引数検査は同スクリプトのtest_color_*で、None・3整数tuple、RGBのlist／非対応型／要素数／成分型・C intオーバーフロー、table自体と各要素の不正型を確認します。ChooseColorWのIAT差替えで検証失敗時の未到達、16色未満の黒補完・16色・超過要素の非取得、入力非変更、従来の下位8bit化・__index__変換と例外伝播、成功／失敗時のPython参照数復元を照合します。test_real_color_dialog_accept_and_cancelは専用非表示ステーションの実ダイアログでNoneによる黒初期値と通常RGBをそれぞれ確定／取消し、戻り値の形式・色・16色表を確認します。
+
+setFileTimeの追加検査はtools/test_native_shell.pyのtest_set_file_time_*をDebug/Releaseの実PYDで実行します。不正な暦日・時刻・WORDへの桁あふれをファイル操作前に拒否し、実一時ファイル/ディレクトリ・読取専用・うるう日の更新と内容/作成日時/属性の保持を確認します。IAT代替でタイムゾーン取得・日時変換・属性取得/解除・open・更新・close・属性復元および複数の同時失敗を注入し、最初のwinerror・filename・状態説明のnotes、後始末の続行、共有違反5回後の復元を確認します。close失敗の代替は実ハンドルを閉じた後で失敗を返し、試験資源を残しません。年の範囲と暦日の検証は[Win32 SYSTEMTIMEの契約](https://learn.microsoft.com/en-us/windows/win32/api/minwinbase/ns-minwinbase-systemtime)に従います。
+
+HugeTextFileはGUI/Windows API非依存のtools/test_hugefile.pyとtools/test_import_cleanup.pyのhuge関連検査でUTF-8/UTF-16 LE/BE、CR/LF/CRLF、64 KiB境界をまたぐ改行、複数区間より長い行、末尾改行・先頭offset、離れた行と繰返し読取り、マッピングと元ファイルの所有関係を確認します。UTF-16の非整列CR/LF/CRLF候補と実改行の隣接、偶数/奇数の開始offset、BOM、64 KiB近傍の偽候補を検査します。走査はmmap直接・区間上限付きで、キャッシュ済み行を再走査しないことも検査します。性能変更時は同じ一時入力・アクセス順で変更前後を別プロセスから比較し、反復時間の中央値とtracemallocのPython最大割当量を測ります。mmapの常駐ページやOS全体のメモリー量とは区別し、生の計測コード・ログはGitへ入れません。
+
+findFile・setFileTime・doDragAndDropも同じ実PYDで検査します。実一時ファイルによる列挙・空結果・親不存在のWin32エラー・キャッシュ・位置引数での日時更新と、不正な型／引数の拒否を確認します。プロセス内IATのx64ネイティブthunkでGIL再取得直後の最終エラーを上書きし、取得済みエラーと共有違反リトライが保持されることを検査します。ドラッグの変換失敗ではPython参照数とCRT確保／解放数の復元、Win32／OLE処理への未到達、元のTypeErrorの伝播を確認します。正常リストはDoDragDropだけを代替し、実IDataObjectからCF_HDROPを取得してUnicodeパス・空リスト・媒体解放を照合します。実デスクトップへの物理ドラッグや任意のドロップ先の動作を検証した結果とは区別します。
+
+通常実行は隔離とクリップボード検査を必須にします。制限環境で既存デスクトップを使う場合だけ、`Python315/tools/python.exe -B tools/test_native_shell.py --allow-restricted-desktop` を指定します。CreateWindowStationW自体のエラー5だけをフォールバック対象とし、他のエラーや切替途中の失敗は伝播します。フォールバック時は既存デスクトップ上で実メニュー・色選択ダイアログ・Shellコピーを実行するため、常用環境から分けたテスト環境で指定します。この場合だけ、OpenClipboard／GetClipboardDataのエラー5をCF_HDROPサブテストのskipとして記録します。省略があればクリップボード内容は未確認として扱います。実InvokeCommandは元のCOMメソッドへ転送し、呼出しが1回でHRESULTが成功であることをskipの前に検査します。通常実行や隔離成功時、他のエラーはskipしません。
+
+実Shellの検査は一時ファイルを対象に、実TrackPopupMenuのモーダルループと取消、不存在PIDLによる終了、実Shellのコピーと隔離クリップボード内容を確認します。コピー項目の選択だけを代替し、日本語／英語Windowsの標準項目名を使います。色選択は実ダイアログの初期化後に確定／取消メッセージを送り、戻り値・初期RGB・16色表を照合します。任意の第三者Shell拡張固有の障害、実COMの内部参照漏れ、メモリ確保失敗は強制再現していません。可視画面での描画品質・物理マウス操作を確認した結果へ読み替えません。
+
+同スクリプトはaddConnectionの位置／キーワード引数と高位HWND・接続先・Windowsエラー（取消を含む）をWNetAddConnection3の差替えで確認し、実際のネットワーク接続や認証は行いません。ckitの親HWND指定・HWND／HINSTANCE返却・sendIpcとpyautoのfromHWND／getHWNDをポインタ幅で照合し、実親子HWNDと実WM_COPYDATA配送を確認します。IPCの長さはPy_ssize_tで受け、COPYDATASTRUCT.cbDataのDWORD範囲を超える値を拒否します。キーボード状態は現在スレッドの256バイトを往復し、不正長を拒否します。
+
+ショートカット読取は一時的に作成した実lnkのパス・引数・作業フォルダー・表示状態と実urlを照合します。CoInitialize／CoCreateInstance／QueryInterface／Load／各プロパティ取得の失敗と成功時NULLを代替し、COM初期化の対応、両インターフェースのRelease、GetURLが返すバッファの解放を確認します。GetURLの成功時NULL／S_FALSEは空文字列として安全に扱います。URLの解放はCoTaskMemFreeを使い、解放専用のSHGetMalloc取得失敗経路を除去しています。
+
+### 入力フックの配送と寿命
+
+tools/test_native_hooks.pyは選択した構成のbuild/run/x64/<構成>/lib/pyautocore.pydを使い、test_native_shell.pyのIAT差替えと専用非表示ステーションを再利用します。配送検査ではSetWindowsHookExWで受け取る実フック関数を記録し、構造体を渡して呼び出します。戻り値・CallNextHookExの呼出し有無と引数・Pythonコールバック引数・標準エラーを照合します。全9経路のコールバック内destroy、再入する参照解放、旧インスタンスのdestroy/dealloc、部分構築失敗とreset後の終了も検査します。別の登録検査だけは実OSへ委譲し、専用非表示デスクトップで登録/解除の成功を確認します。OSによる物理移動通知や複数物理画面への入力結果とは区別します。test_native_pyauto_documentation.pyの仮想画面IAT検査は1画面・左/上の負座標・1ピクセル寸法・画面外の丸めと生成INPUTを確認します。
+
+### 表示開始とキャレット
+
+構成別の配置・テスト選択は[構成別の出力と検査](development.md#構成別の出力と検査)を参照してください。tools/test_window_show.pyは専用非表示ステーションで初回・再表示・リサイズ後のバッファ内容、空領域の非転送、可視領域への転送、GetDC／GetClipBox／BitBltの障害診断とdirty保持・再実行を実PYDと限定したIAT差替えで検査します。Debug版でも実行し、assert無効化による見かけの成功を避けます。描画の見た目は通常デスクトップでの確認と区別します。
+
+tools/test_native_api_safety.pyはckitの寿命・画像境界・Window設定・Plane描画順をDebug／Releaseの実PYDで検査します。トレイは子プロセス内の実受信窓を破棄し、ラッパー無効化・全ハンドラ／ポップアップ参照の解放・二重destroy／破棄後操作・解放時の再入・OS経由の破棄を確認します。Shell通知登録とメニュー追跡だけをIATで代替します。Windowはヒットテスト関数／メニュー木の解放と再入、実HWNDの8通りのresizable／minimizebox／maximizeboxを確認します。画像は空・短いバッファ・寸法積超過、RGBAの行順／色キー／halftone、バッファ／C++オブジェクト／Pythonラッパー確保とGDIの失敗を扱います。確保失敗は巨大メモリーを要求せずネイティブthunkで注入し、ラッパー確保失敗ではGDI資源数の復元も確認します。TextPlane／ImagePlaneのpriority変更は再描画後の実画素と同値間の順序を確認します。通常デスクトップの通知領域表示・物理マウス操作・目視評価とは区別します。
+
+tools/test_window_show.pyはフォント未設定TextPlaneの8操作がValueErrorを返すこと、getFontがNoneを保つこと、表示・flush時に未設定Planeを描画しないこと、setFont後の計測・座標変換・キャレット・出力・スクロールと背景画素を検査します。Debug／Releaseの実PYDを専用非表示Windows領域で使用し、可視GUIの目視確認とは区別します。
+
+同スクリプトのキャレット回帰は、TextWindowの両入口とTextPlaneの(-1, -1)による非表示、通常枠・1セルを超える枠／水平余白、非表示からの復帰・移動・再描画・再表示をクライアント全画素で照合します。(-1, -1)以外の負のTextPlane座標は従来の変換を維持し、Dialogは実EditWidgetの描画とスクロール後の上下表示範囲外を検査します。点滅は決定的なWM_TIMER配送に加え、対象窓だけの間隔を短縮した実OSタイマーとmessageLoopで表示→消灯→表示・非表示維持・復帰を確認します。IMEはIMM入口だけをIATで代替し、開閉通知後のXOR色、フォント、CFS_POINT／CFS_RECTの位置と領域、非表示中の点滅がdirtyを再生成しないことを検査します。実IMEの変換操作とは区別します。
+
+キャレットやIME候補位置を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーで入力欄を開き、使用中の日本語IMEで未確定入力・候補表示・Enterによる確定・Escによる取消を行い、候補が現在の入力位置付近に表示されることを確認します。別窓へ移動してから入力欄へ戻り、通常位置のキャレットとIME入力が復帰することも確認します。
+
+### 補完・ユーティリティキーと前面遷移
+
+入力補完とユーティリティキーの回帰は、tools/test_mainwindow.py・tools/test_input_settings.pyとtools/check_standard_windows.pyの補完・Alt+Enter・F12・独自キーの検査で確認します。補完3モード、履歴3モード、Alt+Enterの有効/無効、F12の成功/対象なし/コピー失敗、既存履歴と保存内容の保持、入力終了、独自キー上書きと通常Enter/Ctrl+Eを扱います。専用非表示Windows領域の実HWNDへWM_KEYDOWN/WM_SYSKEYDOWNを配送し、Alt+Enterの外部アプリには実子プロセスで非分割文字列が届くことを照合します。コピー失敗だけはAPI入口を代替し、物理キー・可視表示・自然なフォーカスの見え方とは区別します。
+
+実際の前面遷移は、通常デスクトップで `Python315/tools/python.exe -B tools/check_standard_windows.py --interactive-foreground test_native_external_launch_and_utility_foreground` を個別実行します。--interactive-foregroundは許可された前面化・モーダル検査の名前を明示した場合だけ実行します。この検査は、一時設定と別プロセスの試験窓を使い、クリップボード書込みは代替して終了時に元の前面ウィンドウへ戻します。試験窓からテスト側へAllowSetForegroundWindowで再操作を許可し、OS設定は変更しません。実キー/システムキーメッセージから、実プロセスの最小化起動とOSによる起動拒否、通常起動・別名・昇格委譲・修飾・OS検索・ファイル・URL・Alt+Enterの成功/失敗、F12の全結果を検査します。起動経路の網羅部分はShell入口を代替し、明示的な非アクティブ化を呼ばないことと次の空入力が編集可能なことを確認します。実起動した別プロセスが自ら前面になる自然な遷移と、F12だけが明示的に非アクティブ化する実前面遷移を照合します。実UAC、周辺ウィンドウを含むちらつきの見え方、物理キーの操作感、日英説明の読みやすさとは区別します。test_mainwindow.pyでも外部起動の成功/失敗後に明示的な非アクティブ化を呼ばないことを検査します。
+
+## 別プロセスのIME変換状態
+
+tools/test_native_ime.pyはDebug／Releaseの実PYDを専用非表示Windows領域で検査します。VS 2026の既存コンパイラーでtools/native_ime_provider.cppを一時フォルダーへビルドし、同じ非表示デスクトップの別プロセスとして起動します。親/編集HWNDからHWNDを持たないフォーカス要素を選択し、True/False/Noneと失敗を取得すること、フォーカスなしの場合だけHWND自身へ戻ること、別の窓のフォーカスを選択しないことを実UIA通信で確認します。確定/取消相当の遷移、取消後に非NULLの空範囲が残る条件のFalse、応答停止・破棄済みHWND、100ミリ秒の待機打切りと回復も検査します。状態は検査用プロバイダーが決定的に返す値であり、実IMEを駆動した結果ではありません。
+
+COM初期化/構築・成功時NULL・接続/通信設定・探索条件/要素/パターン/範囲の取得と参照解放、イベント/スレッド構築失敗、期限切れワーカーの生存中に新規照会を蓄積しないことは、プロセス内IAT代替で確認します。探索条件はHasKeyboardFocus=True、範囲はTreeScope_Descendantsです。HWND自身とwindowless編集欄がともにフォーカスありを返す条件でも、子孫の編集欄を優先することを検査します。端点比較の成功/失敗・非対応と参照解放、選択したフォーカス要素の非対応/失敗で親パターンへ戻らないこと、既存getImeStatusの開状態と新APIの非変換状態の独立性も検査します。権限失敗はHRESULTの注入であり、実管理者プロセスやUAC操作の検証へ一般化しません。原稿のdescribe_imeはtools/test_extension_examples.pyが直接実行します。
+
+方式はMicrosoftの[GetActiveComposition](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomationtexteditpattern-getactivecomposition)と[MTAスレッド要件](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-threading)に基づきます。[接続](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomation2-put_connectiontimeout)・[通信](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomation2-put_transactiontimeout)の制限に加え、呼出し側もイベント待機を打ち切ります。タイムアウトした処理は強制終了せず最大1件だけ残し、終了まではbusyを返します。[UIAの権限境界](https://learn.microsoft.com/en-us/windows/win32/winauto/uiauto-securityoverview)を変更するUIAccessや昇格は追加しません。
+
+HWNDからの対象選択は[FindFirst](https://learn.microsoft.com/en-us/windows/win32/api/uiautomationclient/nf-uiautomationclient-iuiautomationelement-findfirst)で、その窓のUIA control viewの子孫に限定します。ブラウザー枠自身もHasKeyboardFocus=Trueを返すことがあるため、枠は探索対象から除外し、子孫が見つからない場合だけHWND自身を照会します。[ChromiumのGetActiveComposition実装](https://chromium.googlesource.com/chromium/src/+/refs/heads/main/ui/accessibility/platform/ax_platform_node_textprovider_win.cc)はフォーカス要素のactive compositionを使うため、親のTextEditPatternだけでは編集欄の状態を判定できません。対応アプリの候補はEdgeのHTML textareaです。windowless編集要素のTextEditPatternと非変換時のFalseを確認しても、実IMEの開始・変換・確定・取消の検証とは区別します。DevToolsのInput.imeSetCompositionでDOMの合成文字列を作るだけでは、TSF経由のUIA変換範囲の通知を検証できません。
+
+実IMEの状態遷移の確認は、Edgeの[検査用textarea](../tools/ime_composition.html)と実IMEの連携です。既存ブラウザーを閉じる必要はなく、一時プロファイルでこのページを開けば既存の個人設定と分けられます。Edgeの起動例は次のとおりです（このブラウザーは実操作のため表示します）。
+
+```powershell
+$imeProfile = Join-Path ([IO.Path]::GetTempPath()) ('recraft-ime-' + [guid]::NewGuid())
+& "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe" "--user-data-dir=$imeProfile" --no-first-run (Resolve-Path tools/ime_composition.html).Path
+```
+
+確認対象の配布物を指定して、次の読取り専用ツールを通常デスクトップで起動します。ツールは窓・入力・IME設定を変更せず、読込みPYDのSHA256、フォーカスされたHWND・プロセス名・窓クラスと結果の変化を標準出力へ表示します。窓タイトルや入力文字列は取得しません。対象窓を固定する場合は--hwnd 0x123456のように指定できます。自動検査では構成別バイナリの読込み、非表示デスクトップでのフォーカスなし/取得拒否、--hwnd指定によるwindowless要素の照会と不正値の拒否まで確認します。
+
+```powershell
+.\Python315\tools\python.exe -B tools/check_ime_composition.py --package dist/ReCraftLaunch --seconds 60
+```
+
+EdgeのIME probe欄へフォーカスし、日本語IMEで未入力→入力開始→Space等で変換→Enterで確定→再入力→Escで取消を行います。期待値はFalse→True→True→False→True→Falseです。未確定文字列が完全に消えるまでEscが複数回必要なIMEでは、最後の取消後にFalseとなることを確認します。IMEを開いただけで未確定文字列がないときもFalseです。候補UI側へフォーカスが移った場合は出力HWNDが編集欄を含む窓のものかを区別します。UnsupportedをFalseと読み替えません。非対応または失敗の場合は、対象HWNDとUIAプロバイダーの取得結果を調べ、対応できる組合せの制約として記録します。利用アプリ/版・OS・IME/版・対象HWND・実結果を記録し、対応を確認できた組合せだけを実確認済みとします。共通コードなのでUI言語別に繰り返す必要はありません。
+
+## Python更新時の検証
+
+[既存Python環境の更新](development.md#既存python環境の更新)後は、`sys.version`・`struct.calcsize("P") * 8`と必須ヘッダー・ライブラリ・DLLを確認し、4プロジェクトをRelease x64でリビルドします。Docutils・Pygmentsはrequirements-docs.txtから再導入し、Doxygenは既存配置を使います。Pythonライセンスは取得した公式NuGetの`tools/LICENSE.txt`と比較し、同一なら変更しません。
+
+Python 3.15.2 x64への更新では、リビルド後に`makefile.py copy`で開発実行先のDLL・標準PYDも新環境へ揃えてから、ネイティブLine、描画・表示開始・関連GUI隔離テスト、通常Ruff、テキスト形式検査を行います。次の3.15.xパッチ更新も同じ順序で検証します。`makefile.py release`は標準ライブラリのバイトコードとruntimeを更新し、日英の文言・importと共通の標準ライブラリ・ネイティブ拡張ロード・文書・言語・版の組込み検査を行います。成功した組込み検査は追加実行せず、生成後に一度だけZIPのCRC・言語別資材と、新NuGetのDLL／リビルドした3つのPYDの一致を確認します。最終distは日英同梱です。
+
+埋込初期化を自動確認する場合は、配布物の隔離コピーで起動モジュールだけを検査用に差し替え、実EXEのPyConfig初期化、版・64bit・書込抑止、標準ライブラリとネイティブ拡張ロードを確認します。元の配布物は変更しません。この検査も可視GUI・実IPC・IMEの確認を代替しません。更新後の単一ZIPを確認用フォルダへ展開し、以下の該当する実機手順を確認してください。
+
+## 文書リンクとテキスト形式
+
+README・開発文書・ソースコメントの参照先について、相対パスと見出しアンカーが有効であることを確認します。
+
+LF（UTF-16LE資材2ファイルはCRLF）・文字コードはtools/check_text_format.pyで確認します。形式チェッカーの回帰はtools/test_text_format.pyで確認します。生成HTML用のtools/check_docs.pyは開発Markdownのリンクを検査しないため、Markdownの参照先は別に確認します。
+
+## 配布資材の確認
+
+配布物は[配布とアーカイブ](development.md#配布とアーカイブ)の手順で生成します。makefile.py distは4プロジェクトのRelease Rebuild、compile・copy・document、配布フォルダ作成と組込み検査を行います。makefile.py allは続いてZIPを生成します。開発用custom.py・commands.jsonは未作成の場合だけサンプルから配置し、既存設定・scripts/は保持します。dist/ReCraftLaunchは再作成されます。
+
+検査の責務とタイミングは次のとおりです。同じ対象・条件で成功済みの検査は繰り返しません。
+
+| 検査 | 実行する場面と保証 |
+|---|---|
+| 関連する開発・機能テスト | 実装・仕様・テンプレート・テーマを変更したとき。Reload・拡張configure・サンプル有効化はtest_input_settings.py、配色とキャレットXORはtest_gui_drawing.py。配布作成ごとには実行しない |
+| makefile.py compile | 生成したlibrary.zipの日英文言pycをソースと照合。無関係なcopy・document起動時の文言検査は行わない |
+| makefile.py document | 日英各1回のcheck_docs.pyでページ・参照・アンカー・画像/CSS・APIとライセンス6項目の見出し・順序・全文を原本と照合し、日英APIメンバーを照合 |
+| tools/check_package_files.py | 完成した配布フォルダの構成・禁止物・library.zipのCRC・バイトコード形式、ネイティブ・版・日英文書とライセンスを検査。ルートLICENSE.mdとlicenses/の指定5ファイルの名前・大文字小文字・原本とのバイト一致を確認し、旧名・欠落を拒否。通常配布は検査済みdocs/htmlとの全ファイル一致でコピーを確認し、HTMLを再解析しない |
+| tools/check_package.py | 配布物だけの検索パスで本体・全PYD・標準ライブラリ・拡張をimportし、読込み元と日英文言の結合を確認。共通の全PYD・標準ライブラリ・拡張importとJSONサンプル検証は日本語時だけ実行。configure・Reload・標準ライブラリの算法・subprocess起動・描画条件は実行しない |
+| makefile.py all／releaseのZIP化 | 直前に成功した配布フォルダ検査を再利用し、ZIP生成後のCRCとSHA256を確認。永続キャッシュや検査済みマーカーは作らない |
+| makefile.py archiveの単独実行 | check_package_files.pyで現在のフォルダを独立検査し、日英check_docs.pyも実行。開発側のdocs/htmlがなくても利用できる。importスモーク・機能テストは繰り返さず、ZIPのCRC・SHA256を確認 |
+
+個別に確認する必要がある場合の例です。通常の配布生成で成功していれば追加実行は不要です。
+
+```powershell
+.\Python315\tools\python.exe -B tools/check_package_files.py dist/ReCraftLaunch
+.\Python315\tools\python.exe -I -S -B tools/check_package.py dist/ReCraftLaunch ja
+.\Python315\tools\python.exe -I -S -B tools/check_package.py dist/ReCraftLaunch en
+```
+
+`--generated-docs docs/html`は、直前のdocumentで検査済みの生成ヘルプをコピーした工程に限って使います。独立した配布フォルダの検査では省略し、同梱HTML自体を検査します。ネイティブ検査は最終配布先で1回だけ行います。check_native_build.pyの同期・リンク拒否処理は変更せず、現在のPython315/toolsを基準にlib/の集合と同梱バイナリを照合し、余剰・欠損・旧ランタイム・誤ったx64形式・Debug CRT・別Python DLL依存を拒否します。version_info.pyは正本・EXEの数値版と文字列版・library.zip内の番号を照合します。
+
+配布工程を変更した場合はtools/test_strings.py・test_native_build.py・test_version_info.pyを実行し、変更した機能検査も選択します。管理対象のlib/へ既知の余剰DLL・PYDを配置して通常配布を1回生成し、除去と配布ファイル集合を確認します。続いてarchiveを単独実行し、最終ZIPの集合・内容をdist/ReCraftLaunchと照合します。all／releaseからの成功結果引継ぎと失敗時の停止は既存の工程テストで確認し、その確認だけのためにフルビルドを繰り返しません。各構成の開発設定と、別構成のEXE・PYDのハッシュも前後で照合します。欠損・禁止物・版不一致・破損の試験は一時フォルダか隔離コピーで行い、配布用成果物を変更しません。これはファイル構成の再現性の検査であり、再リンク後のPEやZIP全体のハッシュ一致は要求しません。
+
+makefile.py releaseは共通コードと日英ヘルプを一括生成し、組込み検査後に単一ZIPを作成します。ZIP名・サイズ・SHA256を対象ソースとともに記録します。実機確認後に生成元が変わらなければ、そのZIPと結果を引き継ぎます。
+
+ZIPを展開し、対象ソース・言語とlibrary.zip、README.ja.txt・README.en.txt、COMMANDS.ja.md・COMMANDS.en.md、ヘルプ一式の対応を確認します。README.<lang>.txt・COMMANDS.<lang>.mdはdocs/<lang>/readme.txt・commands.mdと一致し、旧README.txt・COMMANDS.mdは含めず、詳細な導入・設定・操作はヘルプへ案内します。個人設定、新旧INI、開発用sitecustomize.py、Debug exe、開発ツールを含めません。配布のVERSIONINFOとライセンスも確認します。ZIP生成は[ヘルプ同梱ZIPの生成](development.md#ヘルプ同梱zipの生成)を参照してください。
+
+## 起動・保存先・通常操作
+
+以下は各経路の確認方法であり、全項目を人力で繰り返す指示ではありません。対象変更の自動検証で確認済みの条件を除外し、人力での判断が必要な部分だけ選択します。
+
+1. 他のReCraftLaunchを終了し、確認用コピーを起動・終了・再起動する。CraftLaunchと併用する場合は別ホットキーにする。
+2. 必要な場合だけsettings/_custom.py・_commands.jsonを実設定名へコピーする。既存設定を上書きしない。
+3. サンプル起動、直接パス・URL・未登録の実行ファイル名、引数付きコマンドを確認する。
+4. Configの分類・現在値・長い値の要約・空欄表示を確認する。各入力画面でTab/Shift+Tab、Enter/Esc、説明と操作案内を確認する。
+5. 選択中の設定保存先にcustom.pyを配置し、Reloadで反映できることを確認する。
+6. 初回reclnch_exe.iniがmulti_user=0で作成されること、AppData指定の再起動後は切替先を使うこと、アプリ保存へ戻せることを確認する。自動コピー・旧設定移行を期待しない。
+7. 入力設定やテーマを変更して再起動し、指定と登録が保持されることを確認する。INI直接編集は終了後に行う。
+8. 表示位置の明示保存、空入力時Esc、モニター情報変更、IPC入力終了時の復元と、通常ホットキーでは復元しない動作を確認する。
+
+## Python拡張
+
+- 配布ZIPのextensions/に公式5モジュールのソース、settings/scripts/にディレクトリ保持用.gitkeepがあること。library.zipに公式拡張を取り込まないこと。
+- 未設定ではサンプルのコマンド・キーが追加されず、custom.pyからimportとconfigure呼び出しで有効になること。
+- アプリ設定・隔離したAppData設定の両方で選択中のscripts/を使い、共用extensions/はアプリ側を使うこと。既存スクリプトを変更しないこと。
+- configure_ListWindowからlist_keysを適用し、Ctrl+P／Ctrl+Nで移動できること。custom.pyの呼び出しを外しReloadするとキー・コマンドが元に戻ること。
+- 明示importしたscripts/・extensions/のPythonソース変更と削除した定義がReloadで反映されること。終了処理はregisterConfigCleanupへ登録し、呼出し削除後も解除されること。JSON編集後の独自コマンド保持も確認すること。
+- NetDriveの外部操作・クリップボード・時計表示・物理キーの確認は、関数呼び出しを代替する隔離テストと区別する。
+
+## コマンド一覧と編集
+
+局所的なドロップ候補・一覧終了の回帰はtest_command_editor.py・test_list_navigation.py・test_command_list.pyで確認します。ドット付きフォルダ名と自身のWorkDir、ファイル名の拡張子除去と親WorkDir、セミコロン／str.isspace()全種の自動候補からの除去、手入力の非改変、lnk/url専用情報・複数パスの引用を扱います。一覧はOSの閉じる操作とEscの未選択結果（整数／修飾キー付きタプル）、Enter決定、空の表示文字列を含む1文字検索の巡回・折返し・一意一致決定を確認します。
+
+check_standard_windows.pyのtest_native_drop_folder_file_names_and_edited_fieldsは実在するフォルダ／ファイルをWM_DROPFILESでメインと編集画面へ配送し、候補と編集済み欄・JSONの保持を照合します。test_native_list_close_cancels_config_font_and_command_actionsは実HWNDへのWM_CLOSEとWM_SYSCOMMAND/SC_CLOSE（Windowsの閉じるシステムコマンド）、Esc、Enterを使い、設定変更・フォント適用・コマンド編集の取消／明示決定、フィルタ中の閉じる操作、親復帰・HWND解放を確認します。フォント候補だけを固定し、物理Alt+F4入力とは区別します。test_native_onekey_search_with_empty_display_rowsはWM_CHARで文字列・タプル・リストの空表示行をまたぐ検索と一意一致決定を確認します。いずれも専用非表示Windows領域で実施します。
+
+ドロップ登録・一覧終了・Nameの仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPの日英F1ヘルプとCOMMANDSの該当節を開き、表示欠けや読みづらさがないことを確認します。
+
+親子遷移はcheck_standard_windows.pyのtest_native_editor_modal_parent_statesとtest_native_list_modal_parent_returnを使用します。直接編集の保存／Esc取消、構築・ループ・on_shown・保存後通知の例外、初期親の表示／非表示と有効／無効の組合せ、実Ctrl+E／new／メインへのドロップ、一覧からの編集・新規・ドロップ、選択・ネイティブ所有関係とHWND解放を検査します。test_command_list.pyは編集終了から新一覧の構築・表示まで旧一覧が生存／表示を維持し、新一覧表示後に一度だけ破棄される順序と、再読込・構築・配置・表示・旧一覧破棄の各失敗時の全解放を扱います。test_native_list_modal_parent_returnも通常デスクトップで旧一覧の実可視状態と、新一覧が可視になってから旧一覧を破棄する順序、編集画面の一覧右側・上端揃えと画面端の補正後座標を確認します。test_command_editor.pyはメイン直開きの既存配置関数と一覧経由だけの右側配置を検査し、test_variable_layout.pyのtest_editor_list_position_aligns_right_and_top_with_work_area_clampingは実窓矩形・異なる親フォントサイズ・負座標を含む作業領域と右下端で配置・画面内補正を検査します。モニター情報は代替しており、物理モニター切替の検査ではありません。通常デスクトップでは次の限定実行で、一時設定・一時ウィンドウを使って実isVisible・GetActiveWindow・GetFocusも照合し、元の前面窓を復帰します。専用非表示Windows領域の結果と区別し、物理キー入力・実IME・遷移の見やすさを保証したとは扱いません。
+
+```powershell
+.\Python315\tools\python.exe -B tools/check_standard_windows.py --interactive-foreground test_native_editor_modal_parent_states test_native_list_modal_parent_return
+```
+
+表示位置や親子遷移の目視は、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーで、空入力→Ctrl+E→一覧→編集を開き、右側配置とタイトルバー上端の見た目を確認します。キー配送・保存／取消・選択・有効状態・実フォーカスと、旧一覧の保持／新一覧表示後の破棄順・配置座標は自動検査で扱います。位置の説明を変更した場合は、日英のCOMMANDSとF1で読みやすさを確認します。一覧の編集終了時に軽微なちらつきが残る場合があります。
+
+登録名は空文字列を許し、セミコロンとPythonのstr.isspace()に該当する文字を前後・中間とも禁止します。test_command_store.py・test_command_draft.py・test_command_editor.py・test_command_list.pyでJSON読込・GUI保存・複製拒否、入力と原本の保持、一覧の不正名確認・削除を検査します。test_native_command_names_zero_actions_and_invalid_reloadは実編集画面で入力保持を、test_native_json_reload_preserves_live_configuration_and_recoversは空白名を含む失敗後の旧登録・独自設定・資源保持を照合します。
+
+- commands.jsonがない初回、通常コマンドだけ登録した後、空欄コマンドの登録ありの各状態で空欄行が常に先頭にあること。表示だけで保存されないこと。
+- new/Insert、Enter/Ctrl+E、Delete、Ctrl+Insert、改名、ドロップ、保存・取消、再起動を確認する。
+- 通常時の1文字巡回（F単独・折返し）、Ctrl+Fの部分一致ライブフィルタ、大文字小文字・記号・日本語入力・Backspace、空文字列での空欄行を含む全件表示、0件からの回復を確認する。
+- 検索中のタイトル・候補だけの上下／PageUp/Down／Home/End、Ctrl+F再入力、編集・削除・複製・新規・ドロップの抑止、Enter/Escによる検索のみ終了と選択・フック・通常タイトルの復帰を確認する。検索終了後の編集・保存・取消・削除・複製・ドロップが正しいコマンドを扱い、Config・履歴の検索が従来どおりであること。
+- 空欄コマンドは編集時にLinkから始まり、NameをTab・Alt+N・クリック・ドロップで変更できないこと。一覧のDelでは理由を表示し、登録・選択を保持すること。
+- 未登録の空欄行は複製しないこと。登録済みなら通常名へ複製でき、改名・削除できること。
+- 通常の新規登録は空欄コマンドの値を引き継がず、ドロップ新規作成はNoneへ対象情報だけを設定すること。
+- ViewMode・Modifierの巡回・直接選択、アクセスキー、Tab全選択、値保持、重複名エラー、長文エラーからの編集復帰を確認する。
+- 編集中は直前のメイン／一覧を隠さず無効に保ち、保存・取消後は直前の画面へ戻ること。一覧からの新規・ドロップも一覧を親とし、一覧の再構築中にメインをアクティブ化しないこと。
+- custom.pyで追加した独自コマンドがJSON編集・複製・削除後も使え、独自定義を消してReloadすると残らないこと。
+
+## 修飾操作と外部連携
+
+test_json_commands.pyのtest_multistage_alias_argument_order_matches_folder_defaultsは複数段の固定引数・%param%・引用符・連続空白・バックスラッシュ・セミコロンを含む原文の合成順序が、通常実行と3種の修飾キーの所在フォルダ／基点置換で一致することを確認します。
+
+個別の修飾操作の優先、未登録時の4種の共通既定動作、共通置換元の追加・編集・削除・順序変更・保存・取消を確認します。基点置換の未設定・不一致・結果不存在は無動作です。
+
+所在フォルダ・基点置換はtest_command_platform.py・test_json_commands.pyで、実在する絶対パス、WorkDir・環境変数、ファイル名だけの実行先、ディレクトリ、不存在、別名連鎖、最初の基点・境界・ルート一致・結果不存在を検査します。パスヘルパー単体の相対パス解釈と、登録Linkでの相対パス拒否を区別します。OS検索の代替結果と、F12が検索せず終端Linkをコピーすることを区別します。test_command_registry.pyでは別名連鎖の最初の空でないWorkDirと固定引数の順を確認します。
+
+Windows上ではcheck_standard_windows.pyのtest_native_target_and_mapped_folders_use_real_os_searchで実PATH/PATHEXT・notepad.exe検索と両修飾操作のフォルダを、test_real_app_paths_registry_and_os_executionで一時HKCU App Paths登録・別名からの両フォルダ解決と実子プロセス起動を検査します。test_shell_absolute_and_environment_targetsは実ShellExecuteCommandと子プロセスで、絶対・環境変数・実行時マクロ入りLinkに対し、WorkDir未指定時に同じ実在ファイルの親フォルダを使うことを照合します。test_json_commands.pyではShellへ渡る引数、明示・別名継承WorkDirの優先、不存在・ファイル名だけ・フォルダの未指定維持、キュー待ち中の変更と導出した親フォルダの二重展開防止、公開APIの空directory維持も確認します。フォルダを開くShell入口は代替し、実検索・実起動とExplorerの可視表示を区別します。App Paths検査には一時キーの作成・削除権限が必要です。
+
+相対Link拒否はtest_command_store.py・test_command_editor.py・test_json_commands.py・test_ipc_execute.pyで、相対／ルート相対／ドライブ相対、絶対・UNC・実行ファイル名・別名・URL、環境変数・%param%の展開結果、実在・WorkDir指定、全Modifierの選択・非選択、保存拒否時の原本・編集値保持と修正再保存、JSON読込／Reloadの非拒否、キュー待ち中の環境変数変更、通知後の次の実行を確認します。check_standard_windows.pyのtest_native_relative_link_rejection_console_f12_and_recoveryは非表示Windowsで実キー配送、入力終了、コンソール自動表示と通知1回、全経路のShell非呼出し、実クリップボードへの相対Linkコピー、実子プロセスによる復帰を確認します。test_native_editor_relative_link_warning_preserves_edit_and_fileは実編集画面で警告内容・原本／編集値保持・修正保存を確認し、警告を開く入口だけを代替します。
+
+相対Link拒否の文言を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーで、新規登録のLinkにtools\tool.exeを入力して保存したときの警告と、JSONへ同じLinkを記述してReload後に実行したときのコンソール文言の読みやすさを確認します。日英の文言を変更した場合は、各言語の警告・コンソールとF1のLink制限説明を確認します。
+
+Alt+Enter系4キーの独立したINI読込・保存、全キー既定無効、通常キーだけのプロパティ優先（既定で有効）、追加3キーでのプロパティ拒否・実在確認非実行はtools/test_altenter_settings.pyで確認します。同テストは日本語・空白・引用符・URL予約文字の引用／quote_plus処理、保存済み宛先の保持、取消・同値確定・保存失敗時の旧設定とINIの保持、JobQueueへ渡すキー別スナップショットも扱います。tools/test_mainwindow.pyは標準関数の無効時の実行非呼出し・有効時の入力終了を、test_input_settings.pyは全4設定のReload前検証と不正値による旧設定保持を、test_json_commands.pyは4標準割当と対象キーの引渡し・従来の登録Modifierを確認します。
+
+check_standard_windows.pyのtest_native_alt_enter_and_f12_key_dispatchは専用非表示Windowsで4種類のWM_KEYDOWN/WM_SYSKEYDOWNを配送し、無効時の文字列・選択端点・同じ入力セッション・実フォーカス・履歴の保持、設定の即時反映、有効時の実子プロセスへの非分割文字列と入力終了を確認します。test_native_alt_enter_paths_web_and_no_fallbackは実在パスで通常キーだけがプロパティへ分岐し、追加3キーはキー別URLへ渡ること、他キーが有効でも無効キーが入力を終了しないことを確認します。Shell入口は代替し、プロパティ画面やブラウザーは開きません。test_native_alt_enter_key_selection_and_action_menusは実ListWindowへのキー配送で4キーの選択と動作選択肢を確認します。test_native_alt_enter_settings_dialog_save_cancel_and_failureは4キーの実Dialog・INIで保存／取消／同値確定／実ファイル置換失敗と編集値の保持を確認します。test_native_utility_key_overrides_and_other_command_historyは4キーすべての独自上書き・F12・通常Enter/Ctrl+Eへの非干渉を扱います。
+
+Alt+Enter系のキー設定や起動経路を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーで4キーを物理入力し、キーの押し分けと起動先への自然なフォーカス遷移を確認します。通常Alt+Enterはプロパティ優先を有効にした外部アプリまたはWeb検索を設定し、実在ファイル／フォルダのプロパティ画面が開くこと、追加3キーは設定した外部アプリ／ブラウザーへ移ることを確認します。画面・仕様説明を変更した場合は、日英UIのキー選択・キー別設定画面とF1のAlt+Enter説明・操作一覧に表示欠けや読みづらさがないことを確認します。
+
+連続する半角スペースは先頭・末尾も含め常に保持します。test_argument_strings.pyはコマンド・引数・パス・URLと独自入力の全選択端点、タブ・CR・LFの変換と標準引数／URLの原文保持を検査します。test_input_settings.py・test_config_menu.pyは廃止した選択項目とINI出力の不在、残る設定の保存・取消・独自キーを検査します。check_standard_windows.pyのtest_native_spaces_keys_paste_history_and_settingsは実キー配送によるSpace連打、Space／Shift+Spaceの候補操作、両モードの実クリップボード貼り付け・履歴再呼出し、ConfigからのSpace設定切替とINI保存を確認します。test_native_config_hierarchy_selection_refresh_and_input_returnは削除後の実メニュー順序も扱います。物理入力や目視の検査とは区別します。入力オプションの画面・仕様説明を変更した場合は、最終配布版のConfig→入力オプションとF1の該当段落で、項目と日英説明に表示欠けや読みづらさがないことを確認します。
+
+履歴off/session/persistentの切替はtest_input_settings.pyで、保存済み履歴の削除・欠番／1,000番以上・他キー保持、起動時offとの同値、sessionの新規記録と非保存、persistentへの非引継ぎ、同一モードReload、通常保存／再起動、原子的置換失敗時の元INI・通知・dirtyと再試行、読込失敗時の保護を照合します。test_ini.pyは実Windowsミューテックスと汎用保存の障害を検査します。check_standard_windows.pyのtest_native_nonpersistent_startup_removes_saved_historyは実MainWindowの生成・configure直後にディスクの削除を、test_native_history_mode_menu_deletes_saved_historyは実履歴モード一覧へのEnter／Escとモード・削除の同時保存を確認します。test_native_empty_history_input_modes_and_ini_roundtrip、test_native_lowercase_builtins_and_case_insensitive_history、test_native_history_empty_delete_selection_and_failure_cleanupで実入力・INI往復・履歴候補・Ctrl+K・履歴一覧を照合します。専用非表示Windowsでの検査と可視GUI・実IMEを区別します。
+
+履歴設定の文言や仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーでConfig→入力オプション→履歴を開き、off/sessionの選択肢に付けた保存済み履歴削除の説明と、F1の入力オプション節の読みやすさを確認します。対象は変更した言語です。
+
+補完の仕様説明を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPのdocs/ja/index.html・docs/en/index.htmlの入力オプション節、differences.html、COMMANDS.ja.md・COMMANDS.en.md、およびAutoCompleteOffのAPI説明で、変更した説明に表示欠けや読みづらさがないことを確認します。候補生成・OFF切替・キー操作・実行・履歴の機能条件は上記自動検査で扱います。
+
+## 内部画面と外部へのアクティブ切替
+
+`tools/test_console_visibility.py`はWM_ACTIVATE(False)時点の旧前面、入れ子の所有チェーン、空入力、クリア設定変更、外部への遷移時の保存1回とコンソールのhide／clock／emptyを代替APIで検査します。`test_input_settings.py`のCtrl+Sのモック検査だけをアクティブ切替の証拠にしません。
+
+`check_standard_windows.py test_native_owned_activation_and_external_exit`はDebug／Releaseの実MainWindow・EditWidget・所有HWND・タイマー・キー配送で、クリアON／OFFのCtrl+S→Esc、サブメニュー、OFF→ONの保存、メイン／Configからの外部移動と復帰、履歴・一覧・編集・確認・フォント・入れ子の確認画面・コンソールを検査します。既存のmodal_failures・already_disabled_modal_parent・history_empty_delete・new_and_ctrl_e・nested_inputの各回帰を併用し、例外時の解放と各入口固有の入力終了・復元も照合します。
+
+専用非表示ステーションでは前面化できないため、前面取得とアクティブ通知だけを補い、所有チェーンは実pyauto／HWNDで照合します。通常デスクトップの実遷移は`--interactive-foreground test_native_owned_activation_and_external_exit`で別実行します。専用の別プロセスのウィンドウと一時設定を使い、実前面HWND・入力・選択・履歴・ホットキー相当の子画面復帰を確認して前面を戻します。物理入力・実IME・人の目による見え方は検証しません。最終配布には`--package dist/ReCraftLaunch`を追加し、library.zipと配布PYDの読込先も照合します。通常デスクトップにアクセスでき、前面化APIを使用できる実行環境が必要です。
+
+## IPCとフォーカス
+
+--positionはtest_app_identity.pyで正常な前景矩形に対する相対座標・移動から入力終了後の位置復元までの順序、前景ウィンドウがNoneの場合の移動省略と入力・選択・通常アクティブ化・位置復元の継続、位置未指定時の前景取得省略を確認します。check_standard_windows.pyのtest_native_ipc_position_without_foreground_keeps_input_and_resetsは専用非表示Windows領域で実getForeground()がNoneになることを確認し、別プロセスのWM_COPYDATAから実EditWidgetへの入力・選択置換、入力中の現在位置保持と終了後の保存位置復元、履歴非変更を検査します。通常デスクトップの可視前面化・物理入力・実IMEとは区別します。
+
+組込コマンドのモーダル再入はtest_ipc_execute.pyでConfigMenu・new・History・Reload・Quitの非実行と子への前面化要求、quitと入力指定併用時の入力抑止を確認します。check_standard_windows.pyのtest_native_ipc_modal_builtins_preserve_owner_and_continue_executionは設定・コマンド一覧・編集を実際に開き、別プロセスのWM_COPYDATAで組込名・JSON別名・独自関数・外部起動・入力指定を併送します。追加モーダルの不在、設定世代・終了フラグ・入力・選択・履歴・位置・所有HWND・取得可能なフォーカスの保持、後続実子プロセスの起動と親復帰を照合します。test_native_ipc_new_waits_for_modal_close_then_runs_next_executeでは新規画面のタイマー処理中に送信元と後続executeが待ち、取消後に続行する同期契約を確認します。非表示ステーションのGetFocus比較を、通常デスクトップでの前面化の実証にしません。
+
+IPC受信時の前面化や表示を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPの確認用コピーで設定・一覧・編集を開き、別の端末からreclnch.exe --execute=configを送った際、既存の子画面が自然に前面へ戻り表示を保つことを確認します。仕様説明を変更した場合は、日英index.htmlの「外部プロセスからの操作」節の読みやすさを確認します。
+
+--selectionの座標変換はtest_app_identity.pyで全7値・省略時・セミコロンなし・空文字列・空引数・空コマンド名・複数セミコロン・URL・未知値のエラー／フォールバックとシリアライズ往復を直接照合します。test_argument_strings.pyは引数原文とselection=4を同時転送し、--executeへの非干渉を確認します。check_standard_windows.pyのtest_native_ipc_argument_selection_and_replacementは別プロセスから実WM_COPYDATAを送り、専用非表示Windowsの実入力セッション／EditWidgetへ3・4の範囲内座標が届き、文字メッセージで挿入・選択置換でき、履歴を変えないことを確認します。既存のtest_native_ipc_execute_runs_commands_once_and_preserves_inputとtest_native_ipc_delivery_while_editor_is_modalも使用します。通常デスクトップの見え方・物理入力・実IMEとは区別します。この座標計算だけの変更で追加のIME操作確認は不要です。
+
+selectionの仕様説明を変更した場合、人力では最終dist/ReCraftLaunchまたは同版ZIPのdocs/ja/index.html・docs/en/index.htmlの「外部プロセスからの操作」節をブラウザーで開き、7値の説明と境界条件に表示欠けや読みづらさがないことを確認します。
+
+- 起動済みの同じ確認先へcmdとpwshからreclnch.exe --text="ipc-check"を送り、入力が届くこと。
+- 引数なし再実行で二重起動せず、アクティブ化／トグルとアクティブ状態の組合せに従うこと。
+- selection/position/executeとモーダル表示中の要求を確認する。子画面へ戻り、メインへ再入しないこと。
+- 編集中に別アプリへ移り、ホットキーで子画面へ戻れること。保存・取消・エラー後に親が有効になり、フォーカスが戻ること。
+- 実際の送受信・前面化・キー入力の結果と、代替Window/APIによるテスト結果を区別する。
+
+言語変更では、Configの取消・保存・再起動案内・適用中と次回指定の表示、再起動前後のF1参照先を確認します。test_config_menu.pyとtest_language_startup.pyが客観条件を扱うため、人力では変更した項目・通知の表示欠けと読みやすさ、ブラウザー上の日英文書を確認します。
+
+## 表示文言と可変配置
+
+同じ配布物を確認先へ展開し、ConfigでJapanese／Englishを選び再起動して、Config、一覧、編集、フォルダ入力、ホットキー、確認・エラー、コンソールを確認します。文言変更時は定数名・埋込み・アクセスキーを保持して再ビルド・再起動します。
+
+通常文言と1.5～2倍程度の仮翻訳、全角・改行・長い単語を使い、作業領域1024×768、100%/150%/200%相当を基準に重なり・欠け・必要スクロールを確認します。択一・ボタンの縦配置、クリック・ドロップ・キーボード、モニター間移動・DPI・作業領域通知後の再配置、入力・選択の保持も確認します。
+
+日本語IMEの実入力・確定・取消・候補位置を確認します。非表示ウィンドウの座標・IME矩形検査は実際のIME操作を代替しません。右から左への表示・複雑な組版・任意長の文言や極端に小さい画面は保証対象にしません。
+
+## 描画とフォント
+
+TextPlane.scrollの境界はtools/test_native_text_scroll.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、最終配布は--package dist/ReCraftLaunchで検査します。時間制限付きの隔離子プロセスで、上下左右・重複・移動元より大きい移動・空／不足バッファ・全角文字と属性を検査します。ScrollDC直後の移動元・先が重なる部分と、DIB再生成後の文字バッファ全体を期待内容の実描画と画素比較します。負の座標／移動先／寸法、ゼロ寸法／移動量、C int・セル終端・ピクセル乗算・Plane位置加算の境界、拒否後の内容保持と正常復帰も確認します。行ポインター配列のreserveだけを試験プロセス内IATで確保失敗にし、MemoryErrorと復帰を確認します。任意のメモリ枯渇や可視画質の検査ではありません。
+
+TextPlaneのGDI選択・寿命はtools/test_native_gdi.pyをRECRAFT_TEST_CONFIGURATION=Debug／Releaseで実行し、最終配布には--package dist/ReCraftLaunchを指定します。専用非表示デスクトップの実PYDで、透過・単色・グラデーション、line0／line1の四辺・実線・点線、非表示／フォント未設定と設定後の復帰、dirtyなしの再描画省略を確認します。削除直前のGetCurrentObjectで元の選択への復元を照合し、背景用のCreateSolidBrush・CreatePenの生成失敗、各一時オブジェクトの初回SelectObject失敗、Rectangle失敗を試験プロセス内のIATに注入して取得済み資源の解放を確認します。選択後の区間にはC++の割当・例外・早期returnがなく、生成・選択失敗時は取得済みオブジェクトだけを解放する既存の描画経路を保ちます。DCはDeleteDCで先に破棄してから所有ビットマップを解放します。ストック／借用オブジェクトを削除しません。罫線はDIBへ直接書き込み、GDIペンを生成・選択しません。透過／グラデーション背景の罫線描画でGDIオブジェクトを生成しないことも検査します。
+
+同検査はAlphaBlend前のDIBの色・アルファ・グラデーション方向・重ね線と、合成後の背景／四辺の代表画素も照合します。240回×7バッチの実描画・Window／TextPlaneリサイズと30回の生成・破棄を行い、GdiFlush後のGetGuiResourcesで継続増加がないことを測定します。Windowsが選択中オブジェクトの削除を遅延処理する場合は修正前でもハンドル数が横ばいになるため、資源数だけを選択管理の合格条件にしません。キャレットの通常／IME状態・点滅・再表示、枠・背景と描画失敗後のdirty保持はtest_window_show.py、フォントの所有はtest_native_font.py、構成と読込先はtest_native_build.pyを併用します。ブラシ／ペンの復元先SelectObject自体の強制失敗、オフスクリーンDC／DIBと作業配列の確保失敗は注入していません。
+
+描画方式や配色を変更した場合は、最終dist/ReCraftLaunchまたは同版ZIPで可視画質を確認します。確認用コピーのblack／white／grayでConfig・コマンド一覧を開いて選択・スクロール・サイズ変更・非表示から再表示を行い、背景や枠・区切り線・キャレットに欠け、残像、色の違和感がないことを確認します。グラデーション・二重線を使う拡張では、同じ最終PYDの可視TextPlaneで透過／単色／グラデーションと実線／点線を並べ、背景の滑らかさ・線の位置と間隔が従来どおりであることだけを確認します。非表示での画素照合は、通常デスクトップの可視品質の判断とは区別します。
+
+black/white/grayで通常・選択・択一・非フォーカス、キャレット、スクロール、非表示から再表示、親子画面の切替を確認します。Config・コマンド一覧の通常文字の見え方を比べ、履歴・別Planeのフォントプレビューへ描画方式を一律適用していないことを確認します。
+
+test_native_font.pyは子プロセス内だけで上限付きのGDI割当を行い、CreateFontIndirectの実失敗・RuntimeError・失敗時の旧Font保持・資源数・全解放後の回復を検査します。設定された上限が割当上限16,384個を超える場合、この項目だけskipとして報告します。GetDC・SelectObject・計測APIとメモリ確保の失敗は強制注入していません。通常の描画は既存のtest_gui_drawing.py・test_window_show.pyで別に検査します。
+
+フォント・サイズ・DPI・背景条件を記録し、目視の読みやすさと画素・時間・CPUの測定を区別します。局所のflush完了時間をDWM提示・物理入力から発光までの遅延・実利用CPU負荷・FPSの保証としません。フォントプレビューのキャッシュやGDIリソース、ネイティブLineと代替WindowによるTextWidget描画の検証範囲も区別し、実際のGUI・IME操作は別途確認します。
+
+## 同梱ヘルプ
+
+1. 日英docs一式を含む本体ZIPを展開し、メインとコンソールのF1でアプリ隣のdocs/ja/index.htmlまたはdocs/en/index.htmlを適用中のUI言語で開く。AppData保存でも同じ場所を使うことを確認する。
+2. 通常ブラウザーで本文・画像・ページ内リンク・API索引・検索・ライト/ダークと狭い表示幅を確認する。本文と画面画像が選択言語に対応し、CraftLaunchの旧更新履歴は日本語原文であることを確認する。
+3. F1自体が入力・選択・履歴を変更しないこと、ブラウザーへの外部移動後は既存の入力クリア設定に従うことを確認する。
+4. 成功時は閉じたコンソールを自動で開かず、既存表示を閉じないこと。未配置は同じ版の本体ZIPからdocs全体を復元する案内になることを確認する。
+5. 未配置・破損の試験は確認用コピーで行い、CSS・JavaScript・画像・APIページを含む一式を戻す。
+
+生成済み文書の参照・アンカー・画像/CSS一致はtools/check_docs.pyで確認できます。実ブラウザーの表示完了・JavaScript動作とF1連携は別に確認します。
+
+## コンソール
+
+Ctrl+F10の開閉、開いた直後のフォーカス、メインとの内部移動・別アプリへの移動・非アクティブ時設定を確認します。閉じる操作でメインへ戻り、復帰だけでは再表示しないこと、新しいエラーの自動表示は別要求であることを確認します。
+
+長いパス・日本語・タブ・複数行を表示し、狭い幅・DPI変更後も折返し、上下・Page・左右・ホイール、末尾追従と途中の読書位置が保たれることを確認します。Ctrl+A/Ctrl+C、ドラッグ、ダブルクリック、トリプルクリックで元の文字列をコピーでき、折返し改行と下端案内が入らないことを確認します。

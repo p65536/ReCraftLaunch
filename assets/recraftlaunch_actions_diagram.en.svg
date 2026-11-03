@@ -1,0 +1,204 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="680" viewBox="0 150 1600 680" role="img" aria-labelledby="title desc">
+<title id="title">ReCraftLaunch: configurable command actions and input text integrations</title>
+<desc id="desc">Two panels show four keyboard shortcuts for example actions assigned to an img command and four independent keyboard shortcuts for example input text actions. Each key combination selects one action.</desc>
+<defs>
+ <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f3f7fc"/></linearGradient>
+ <linearGradient id="bluePanel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f4f8ff"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+ <linearGradient id="greenPanel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#f2fbf7"/><stop offset="1" stop-color="#ffffff"/></linearGradient>
+</defs>
+<rect x="0" y="150" width="1600" height="680" rx="0" fill="url(#bg)" stroke="none" stroke-width="1" />
+<rect x="66" y="193" width="720" height="636" rx="28" fill="#dce5ee" stroke="none" stroke-width="1" opacity="0.36"/>
+<rect x="64" y="184" width="720" height="636" rx="28" fill="url(#bluePanel)" stroke="#dbe4ee" stroke-width="1.5" />
+<rect x="91" y="185" width="666" height="6" rx="3" fill="#2563dc" stroke="none" stroke-width="1" />
+<rect x="92" y="219" width="53" height="53" rx="15" fill="#e8f0ff" stroke="none" stroke-width="1" />
+<text x="118.5" y="252" fill="#2563dc" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="19" font-weight="800" text-anchor="middle" letter-spacing="0">01</text>
+<text x="160" y="249" fill="#18283e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="26" font-weight="700" text-anchor="start" letter-spacing="0">PER-COMMAND ACTIONS</text>
+<rect x="602" y="223" width="154" height="33" rx="16" fill="#e8f0ff" stroke="none" stroke-width="1" />
+<text x="679.0" y="246" fill="#2563dc" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="13" font-weight="750" text-anchor="middle" letter-spacing="0.4">UP TO 4 ACTIONS</text>
+<rect x="92" y="282" width="664" height="105" rx="18" fill="#e8f0ff" stroke="#dce7f4" stroke-width="1.2" />
+<rect x="109" y="306" width="57" height="57" rx="13" fill="#ffffff" stroke="none" stroke-width="1" opacity="0.9"/>
+<g transform="translate(137.5,334)" stroke="#2563dc" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-12 -8 L-4 0 L-12 8 M2 9 H13"/>
+</g>
+<rect x="530" y="295" width="212" height="31" rx="15.5" fill="#f8faff" stroke="#bfcef1" stroke-width="1"/>
+<text x="636" y="315.5" fill="#2563dc" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="13" font-weight="750" text-anchor="middle" letter-spacing="0.15">EXAMPLE CONFIGURATION</text>
+<text x="186" y="316" fill="#697b91" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="13" font-weight="730" text-anchor="start" letter-spacing="0.9">COMMAND</text>
+<text x="186" y="353" fill="#1d3048" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="27" font-weight="700" text-anchor="start" letter-spacing="0">img</text>
+<text x="94" y="425" fill="#2563dc" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="14" font-weight="760" text-anchor="start" letter-spacing="1.45">PRESS A SHORTCUT</text>
+<line x1="319" y1="421" x2="754" y2="421" stroke="#dfe7ef" stroke-width="1.5" stroke-linecap="round"/>
+<rect x="92" y="446" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="92" y="446" width="5" height="63" rx="2" fill="#2563dc" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="109" y="457.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="116" y1="491.5" x2="178" y2="491.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="147.0" y="483.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="439" y1="463" x2="439" y2="492" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M457 473 l7 5 -7 5" stroke="#2563dc" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="474" y="460" width="36" height="36" rx="10" fill="#e8f0ff" stroke="none" stroke-width="1" />
+<g transform="translate(492,478)" stroke="#2563dc" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-7 -11 L10 0 L-7 11 Z" fill="#2563dc" stroke="none"/>
+</g>
+<text x="527" y="486" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="20" font-weight="660" text-anchor="start" letter-spacing="0">Launch image editor</text>
+<rect x="92" y="521" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="92" y="521" width="5" height="63" rx="2" fill="#2563dc" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="109" y="532.5" width="59" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="116" y1="566.5" x2="161" y2="566.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="138.5" y="558.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Ctrl</text>
+<text x="177" y="557.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="186" y="532.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="193" y1="566.5" x2="255" y2="566.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="224.0" y="558.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="439" y1="538" x2="439" y2="567" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M457 548 l7 5 -7 5" stroke="#2563dc" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="474" y="535" width="36" height="36" rx="10" fill="#e8f0ff" stroke="none" stroke-width="1" />
+<g transform="translate(492,553)" stroke="#2563dc" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-15 -7 V-11 Q-15 -14 -12 -14 H-4 L1 -9 H13 Q16 -9 16 -6 V12 Q16 15 13 15 H-12 Q-15 15 -15 12 Z"/>
+<path d="M-15 -5 H16"/>
+</g>
+<text x="527" y="561" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="16" font-weight="660" text-anchor="start" letter-spacing="0">Open source images folder</text>
+<rect x="92" y="596" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="92" y="596" width="5" height="63" rx="2" fill="#2563dc" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="109" y="607.5" width="69" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="116" y1="641.5" x2="171" y2="641.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="143.5" y="633.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Shift</text>
+<text x="187" y="632.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="196" y="607.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="203" y1="641.5" x2="265" y2="641.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="234.0" y="633.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="439" y1="613" x2="439" y2="642" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M457 623 l7 5 -7 5" stroke="#2563dc" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="474" y="610" width="36" height="36" rx="10" fill="#e8f0ff" stroke="none" stroke-width="1" />
+<g transform="translate(492,628)" stroke="#2563dc" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-15 -7 V-11 Q-15 -14 -12 -14 H-4 L1 -9 H13 Q16 -9 16 -6 V12 Q16 15 13 15 H-12 Q-15 15 -15 12 Z"/>
+<path d="M-15 -5 H16"/>
+</g>
+<text x="527" y="636" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="20" font-weight="660" text-anchor="start" letter-spacing="0">Open export folder</text>
+<rect x="92" y="671" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="92" y="671" width="5" height="63" rx="2" fill="#2563dc" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="109" y="682.5" width="59" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="116" y1="716.5" x2="161" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="138.5" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Ctrl</text>
+<text x="177" y="707.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="186" y="682.5" width="69" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="193" y1="716.5" x2="248" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="220.5" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Shift</text>
+<text x="264" y="707.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="273" y="682.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="280" y1="716.5" x2="342" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="311.0" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="439" y1="688" x2="439" y2="717" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M457 698 l7 5 -7 5" stroke="#2563dc" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="474" y="685" width="36" height="36" rx="10" fill="#e8f0ff" stroke="none" stroke-width="1" />
+<g transform="translate(492,703)" stroke="#2563dc" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-15 -7 V-11 Q-15 -14 -12 -14 H-4 L1 -9 H13 Q16 -9 16 -6 V12 Q16 15 13 15 H-12 Q-15 15 -15 12 Z"/>
+<path d="M-15 -5 H16"/>
+</g>
+<text x="527" y="711" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="20" font-weight="660" text-anchor="start" letter-spacing="0">Open backup folder</text>
+<g transform="translate(104,786)" stroke="#2563dc" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-9 1 L-3 7 L10 -8"/>
+</g>
+<text x="124" y="792" fill="#617188" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="18" font-weight="520" text-anchor="start" letter-spacing="0">Actions are assigned per command.</text>
+<rect x="818" y="193" width="720" height="636" rx="28" fill="#dce5ee" stroke="none" stroke-width="1" opacity="0.36"/>
+<rect x="816" y="184" width="720" height="636" rx="28" fill="url(#greenPanel)" stroke="#dbe4ee" stroke-width="1.5" />
+<rect x="843" y="185" width="666" height="6" rx="3" fill="#07845d" stroke="none" stroke-width="1" />
+<rect x="844" y="219" width="53" height="53" rx="15" fill="#e6f7ee" stroke="none" stroke-width="1" />
+<text x="870.5" y="252" fill="#07845d" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="19" font-weight="800" text-anchor="middle" letter-spacing="0">02</text>
+<text x="912" y="249" fill="#18283e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="26" font-weight="700" text-anchor="start" letter-spacing="0">INPUT TEXT ACTIONS</text>
+<rect x="1343" y="223" width="165" height="33" rx="16" fill="#e6f7ee" stroke="none" stroke-width="1" />
+<text x="1425.5" y="246" fill="#07845d" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="13" font-weight="750" text-anchor="middle" letter-spacing="0.4">4 ACTIONS</text>
+<rect x="844" y="282" width="664" height="105" rx="18" fill="#e6f7ee" stroke="#dce7f4" stroke-width="1.2" />
+<rect x="861" y="306" width="57" height="57" rx="13" fill="#ffffff" stroke="none" stroke-width="1" opacity="0.9"/>
+<g transform="translate(889.5,334)" stroke="#07845d" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-13 -11 H13 M0 -11 V12 M-6 12 H6"/>
+</g>
+<rect x="1282" y="295" width="212" height="31" rx="15.5" fill="#f8fdfa" stroke="#b3e0d0" stroke-width="1"/>
+<text x="1388" y="315.5" fill="#07845d" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="13" font-weight="750" text-anchor="middle" letter-spacing="0.15">EXAMPLE CONFIGURATION</text>
+<text x="938" y="316" fill="#697b91" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="13" font-weight="730" text-anchor="start" letter-spacing="0.9">INPUT TEXT</text>
+<text x="938" y="353" fill="#1d3048" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="27" font-weight="700" text-anchor="start" letter-spacing="0">sample text</text>
+<text x="846" y="425" fill="#07845d" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="14" font-weight="760" text-anchor="start" letter-spacing="1.45">PRESS A SHORTCUT</text>
+<line x1="1071" y1="421" x2="1506" y2="421" stroke="#dfe7ef" stroke-width="1.5" stroke-linecap="round"/>
+<rect x="844" y="446" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="844" y="446" width="5" height="63" rx="2" fill="#07845d" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="861" y="457.5" width="48" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="868" y1="491.5" x2="902" y2="491.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="885.0" y="483.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Alt</text>
+<text x="918" y="482.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="927" y="457.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="934" y1="491.5" x2="996" y2="491.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="965.0" y="483.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="1191" y1="463" x2="1191" y2="492" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M1209 473 l7 5 -7 5" stroke="#07845d" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="1226" y="460" width="36" height="36" rx="10" fill="#e6f7ee" stroke="none" stroke-width="1" />
+<g transform="translate(1244,478)" stroke="#07845d" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M0 -12 Q-7 -16 -15 -13 V12 Q-6 9 0 13 Q6 9 15 12 V-13 Q7 -16 0 -12 V13"/>
+</g>
+<text x="1279" y="486" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="20" font-weight="660" text-anchor="start" letter-spacing="0">Dictionary lookup</text>
+<rect x="844" y="521" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="844" y="521" width="5" height="63" rx="2" fill="#07845d" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="861" y="532.5" width="59" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="868" y1="566.5" x2="913" y2="566.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="890.5" y="558.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Ctrl</text>
+<text x="929" y="557.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="938" y="532.5" width="48" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="945" y1="566.5" x2="979" y2="566.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="962.0" y="558.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Alt</text>
+<text x="995" y="557.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="1004" y="532.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="1011" y1="566.5" x2="1073" y2="566.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="1042.0" y="558.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="1191" y1="538" x2="1191" y2="567" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M1209 548 l7 5 -7 5" stroke="#07845d" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="1226" y="535" width="36" height="36" rx="10" fill="#e6f7ee" stroke="none" stroke-width="1" />
+<g transform="translate(1244,553)" stroke="#07845d" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<circle r="14"/><path d="M-14 0 H14 M0 -14 C-8 -6 -8 6 0 14 M0 -14 C8 -6 8 6 0 14"/>
+</g>
+<text x="1279" y="561" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="20" font-weight="660" text-anchor="start" letter-spacing="0">Search Google</text>
+<rect x="844" y="596" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="844" y="596" width="5" height="63" rx="2" fill="#07845d" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="861" y="607.5" width="69" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="868" y1="641.5" x2="923" y2="641.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="895.5" y="633.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Shift</text>
+<text x="939" y="632.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="948" y="607.5" width="48" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="955" y1="641.5" x2="989" y2="641.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="972.0" y="633.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Alt</text>
+<text x="1005" y="632.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="1014" y="607.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="1021" y1="641.5" x2="1083" y2="641.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="1052.0" y="633.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="1191" y1="613" x2="1191" y2="642" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M1209 623 l7 5 -7 5" stroke="#07845d" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="1226" y="610" width="36" height="36" rx="10" fill="#e6f7ee" stroke="none" stroke-width="1" />
+<g transform="translate(1244,628)" stroke="#07845d" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-15 -13 H4 M-5 -17 V-12 M-10 -9 Q-5 3 2 7 M-2 -9 Q-4 0 -15 8"/>
+<path d="M4 14 L11 -6 L18 14 M7 7 H15"/>
+</g>
+<text x="1279" y="636" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="20" font-weight="660" text-anchor="start" letter-spacing="0">Translate on the web</text>
+<rect x="844" y="671" width="664" height="63" rx="14" fill="#ffffff" stroke="#e3e9f0" stroke-width="1.3" />
+<rect x="844" y="671" width="5" height="63" rx="2" fill="#07845d" stroke="none" stroke-width="1" opacity="0.8"/>
+<rect x="861" y="682.5" width="59" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="868" y1="716.5" x2="913" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="890.5" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Ctrl</text>
+<text x="929" y="707.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="938" y="682.5" width="69" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="945" y1="716.5" x2="1000" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="972.5" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Shift</text>
+<text x="1016" y="707.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="1025" y="682.5" width="48" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="1032" y1="716.5" x2="1066" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="1049.0" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Alt</text>
+<text x="1082" y="707.5" fill="#8592a5" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="650" text-anchor="middle" letter-spacing="0">+</text>
+<rect x="1091" y="682.5" width="76" height="40" rx="9" fill="#ffffff" stroke="#c5d0df" stroke-width="1.4" />
+<line x1="1098" y1="716.5" x2="1160" y2="716.5" stroke="#d4dce8" stroke-width="1" stroke-linecap="round"/>
+<text x="1129.0" y="708.5" fill="#34465e" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="17" font-weight="620" text-anchor="middle" letter-spacing="0">Enter</text>
+<line x1="1191" y1="688" x2="1191" y2="717" stroke="#e0e7ef" stroke-width="1.2" stroke-linecap="round"/>
+<path d="M1209 698 l7 5 -7 5" stroke="#07845d" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+<rect x="1226" y="685" width="36" height="36" rx="10" fill="#e6f7ee" stroke="none" stroke-width="1" />
+<g transform="translate(1244,703)" stroke="#07845d" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="-3" cy="-3" r="10"/><path d="M4 4 L15 15"/>
+</g>
+<text x="1279" y="711" fill="#20324a" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="16" font-weight="660" text-anchor="start" letter-spacing="0">Search files with Everything</text>
+<g transform="translate(856,786)" stroke="#07845d" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+<path d="M-9 1 L-3 7 L10 -8"/>
+</g>
+<text x="876" y="792" fill="#617188" font-family="Inter, &#x27;Segoe UI&#x27;, Arial, sans-serif" font-size="18" font-weight="520" text-anchor="start" letter-spacing="0">Available independently of commands.</text>
+</svg>
