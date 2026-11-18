@@ -88,6 +88,28 @@ class MessageBoxTests(unittest.TestCase):
         self.assertEqual((short.width(), short.height(), short.button_y), (20, 5, 3))
         self.assertEqual(self.box("").message_lines, [""])
 
+    def test_left_alignment_keeps_body_indent_and_button_positions(self):
+        text = "Name: sf\nModifier: Ctrl+Shift+Enter\nLink: taskkill /F /IM tool.exe\n\n  indented line"
+        centered = self.box(text)
+        left = self.box(text, left_align=True)
+        self.assertEqual(left.buttons, centered.buttons)
+        self.assertEqual(left.button_rows, centered.button_rows)
+        self.assertEqual(left.message_lines, text.splitlines())
+        for box, aligned in ((centered, False), (left, True)):
+            for row, line in enumerate(box.message_lines, 1):
+                draw = next(args for args in box.draws if args[1] == row and args[-1] == line)
+                self.assertEqual(draw[0], 1 if aligned else (box.width() - box.getStringWidth(line)) // 2)
+
+    def test_popup_forwards_left_alignment_and_keeps_result(self):
+        parent = SimpleNamespace(getWindowRect=lambda: (100, 100, 200, 200),
+            isEnabled=lambda: True, enable=lambda value: None, activate=lambda: None)
+        Window.loop = lambda box: box.onKeyDown(13, 0)
+        for aligned in (False, True):
+            with self.subTest(left_align=aligned):
+                self.assertEqual(self.module.popMessageBox(parent, 0, "test", "message", left_align=aligned), 1)
+                self.assertEqual(Window.instances[-1].left_align, aligned)
+                self.assertTrue(Window.instances[-1].destroyed)
+
     def test_scroll_is_bounded_and_buttons_remain_fixed(self):
         self.monitors = [((0, 0, 500, 300), (0, 0, 500, 300))]
         box = self.box("\n".join(f"line{i}" for i in range(100)))

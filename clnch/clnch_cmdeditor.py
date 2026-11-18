@@ -149,7 +149,7 @@ class CommandEditor(ckit.TextWindow):
                     47,
                     1,
                     value,
-                    selection=[len(value), len(value)],
+                    selection=[0, 0],
                     auto_complete=False,
                     no_bg=False,
                 )
@@ -238,7 +238,8 @@ class CommandEditor(ckit.TextWindow):
         for field in ("link", "args", "workdir"):
             text = values.get(field, "")
             self.edit_by_id[field].setText(text)
-            self.edit_by_id[field].setSelection([len(text), len(text)])
+            self.edit_by_id[field].setSelection([0, 0])
+            self.edit_by_id[field].makeVisible(0)
         self.view_choice.select = VIEW_MODES.index(values.get("view_mode", "normal"))
         self._update_focus()
         self.paint()
@@ -268,7 +269,7 @@ class CommandEditor(ckit.TextWindow):
             return False
 
         try:
-            for action in commands_data[self.draft.name].values():
+            for modifier, action in commands_data[self.draft.name].items():
                 link = action["link"].strip()
                 if link.lower() not in commands_data:
                     expanded = clnch_misc.replaceMacro(link, environ=True)
@@ -276,7 +277,15 @@ class CommandEditor(ckit.TextWindow):
                     if not expanded.strip('"').startswith("%param%"):
                         validate_link(expanded, self.draft.name)
         except ValueError:
-            self._show_error(strings.ERROR_INPUT_TITLE, strings.COMMAND_RELATIVE_LINK_GUI)
+            index = MODIFIERS.index(modifier)
+            self._show_error(strings.ERROR_INPUT_TITLE, strings.COMMAND_RELATIVE_LINK_GUI.format(
+                name=self.draft.name or strings.COMMAND_EMPTY,
+                modifier="Enter" if index == 0 else MODIFIER_LABELS[index] + "+Enter",
+                link=action["link"],
+            ))
+            self.modifier_choice.select = index
+            self._switch_modifier()
+            self._focus_field("link")
             return False
 
         try:
@@ -486,6 +495,7 @@ class CommandEditor(ckit.TextWindow):
             clnch_msgbox.MSGBOX_TYPE_OK,
             title,
             message,
+            left_align=title == strings.ERROR_INPUT_TITLE,
         )
 
     def _on_activate(self, active):
@@ -519,7 +529,9 @@ class CommandEditor(ckit.TextWindow):
         self._ensure_visible()
         if select_text and self.focus_index < len(self.edits):
             edit = self.edits[self.focus_index]
-            edit.setSelection([0, len(edit.getText())])
+            end = len(edit.getText())
+            edit.setSelection([0, end])
+            edit.makeVisible(end)
         for i, edit in enumerate(self.controls):
             edit.enableCursor(self.active and i == self.focus_index)
             if not (self.draft.empty_command and i == 0):
@@ -637,7 +649,8 @@ class CommandEditor(ckit.TextWindow):
             values["name"] = "".join(ch for ch in name if ch != ";" and not ch.isspace())
         for key, value in values.items():
             self.edit_by_id[key].setText(value)
-            self.edit_by_id[key].setSelection([len(value), len(value)])
+            self.edit_by_id[key].setSelection([0, 0])
+            self.edit_by_id[key].makeVisible(0)
         if mode is not None:
             self.view_choice.select = VIEW_MODES.index(mode)
         self.paint()

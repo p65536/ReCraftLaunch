@@ -3040,6 +3040,36 @@ if not close_output:
                 self.input_action("ok;復帰確認", lambda: self.key(ckit.VK_RETURN))
                 self.assertEqual(self.result(output)["args"], ["復帰確認"])
 
+            def test_native_execution_failure_context_keeps_modifier_and_expanded_target(self):
+                root = data / "日本語 folder"
+                self.window.modifier_settings.update(CTRL_ACTION="execute", SHIFT_ACTION="execute",
+                                                     CTRL_SHIFT_ACTION="execute")
+                console = self.window.console_window
+                for fallback in (False, True):
+                    for mod, label in ((0, "Enter"), (2, "Ctrl+Enter"), (4, "Shift+Enter"), (6, "Ctrl+Shift+Enter")):
+                        with self.subTest(fallback=fallback, mod=mod):
+                            actions = {key: {"link": "child"}
+                                       for key in ("target", "on_ctrl", "on_shift", "on_ctrl_shift")}
+                            self.apply({"alias": {"target": actions["target"]} if fallback else actions,
+                                "child": {"target": {"link": "%CONTEXT_ROOT%/missing.exe",
+                                                      "workdir": "%CONTEXT_ROOT%"}}})
+                            console.clearLog()
+                            console.registerStdio()
+                            try:
+                                with (patch.dict(os.environ, CONTEXT_ROOT=str(root)),
+                                      patch.object(clnch_mainwindow.pyauto, "shellExecute",
+                                                   side_effect=ctypes.WinError(2)) as shell):
+                                    self.input_action("alias", lambda mod=mod: self.key(ckit.VK_RETURN, mod))
+                                    self.pump(lambda: ckit.JobQueue.defaultQueue().numItems() == 0)
+                                    shell.assert_called_once()
+                            finally:
+                                console.unregisterStdio()
+                            lines = "\n".join(console.log.log)
+                            self.assertEqual(lines.count(strings.EXECUTE_ERROR), 1)
+                            for value in ("Name: alias", "Modifier: " + label,
+                                          "Link: " + str(root) + "/missing.exe", "WorkDir: " + str(root)):
+                                self.assertIn(value, lines)
+
             def test_native_relative_link_rejection_console_f12_and_recovery(self):
                 import clnch_commandexecutor
 
@@ -3073,7 +3103,7 @@ if not close_output:
                                 console.unregisterStdio()
                             lines = console.log.log
                             self.assertEqual(sum("Link:" in line for line in lines), 1)
-                            self.assertIn("origin", "\n".join(lines))
+                            self.assertEqual("\n".join(lines).count("origin"), 1)
                             self.assertIsNone(self.window.commandline_edit)
                             self.assertEqual((data / "commands.json").read_bytes(), original)
                     console.clearLog()
@@ -3097,15 +3127,134 @@ if not close_output:
                     with patch.object(editor, "_show_error", side_effect=lambda *args: messages.append(args)):
                         self.assertFalse(editor._save())
                     self.assertEqual(messages, [(strings.ERROR_INPUT_TITLE,
-                        strings.COMMAND_RELATIVE_LINK_GUI)])
+                        strings.COMMAND_RELATIVE_LINK_GUI.format(name="saved", modifier="Enter", link="tools/tool.exe"))])
                     self.assertEqual((data / "commands.json").read_bytes(), before)
                     self.assertEqual(editor.edit_by_id["link"].getText(), "tools/tool.exe")
                     self.assertFalse(editor.result_saved)
+                    self.assertIs(editor.controls[editor.focus_index], editor.edit_by_id["link"])
                     editor.edit_by_id["link"].setText("notepad.exe")
                     self.assertTrue(editor._save())
                 self.assertEqual(self.run_editor(edit), "saved")
                 self.assertEqual(clnch_cmdstore.load_commands(data / "commands.json")["other"]["target"]["link"],
                                  "tools/other.exe")
+
+            def test_native_editor_link_error_switches_modifier_and_preserves_other_edits(self):
+                self.apply({"sf": {"target": {"link": "notepad.exe"},
+                    "on_ctrl_shift": {"link": "taskkill /F /IM streetfighter6.exe", "args": "  keep  "}}})
+                before = (data / "commands.json").read_bytes()
+                def edit(editor):
+                    editor.edit_by_id["args"].setText("  edited  ")
+                    boxes = []
+                    box_type = clnch_cmdeditor.clnch_msgbox.MessageBox
+                    original_init = box_type.__init__
+                    def create(box, *args, **kwargs):
+                        original_init(box, *args, **kwargs)
+                        boxes.append(box)
+                        def dismiss():
+                            box.killTimer(dismiss)
+                            box.onKeyDown(ckit.VK_RETURN, 0)
+                        box.setTimer(dismiss, 30)
+                    with patch.object(box_type, "__init__", create):
+                        self.assertFalse(editor._save())
+                    self.assertEqual(len(boxes), 1)
+                    self.assertTrue(boxes[0].left_align)
+                    self.assertEqual(boxes[0].message.splitlines()[:3], ["Name: sf",
+                        "Modifier: Ctrl+Shift+Enter", "Link: taskkill /F /IM streetfighter6.exe"])
+                    self.assertEqual(editor.modifier_choice.getValue(), 3)
+                    self.assertEqual(editor.draft.modifier_index, 3)
+                    self.assertEqual(editor.edit_by_id["link"].getText(), "taskkill /F /IM streetfighter6.exe")
+                    self.assertEqual(editor.edit_by_id["args"].getText(), "  keep  ")
+                    self.assertIs(editor.controls[editor.focus_index], editor.edit_by_id["link"])
+                    self.assertEqual((data / "commands.json").read_bytes(), before)
+                    editor.edit_by_id["link"].setText("taskkill")
+                    self.assertTrue(editor._save())
+                self.assertEqual(self.run_editor(edit, target="sf"), "sf")
+                self.assertEqual(clnch_cmdstore.load_commands(data / "commands.json")["sf"]["target"]["args"],
+                                 "  edited  ")
+
+            def test_native_editor_horizontal_scroll_initial_switch_and_keyboard(self):
+                long_text = "C:/" + "日本語😀 folder/" * 10 + "tool.exe"
+                self.apply({"sf": {"target": {"link": long_text, "args": long_text, "workdir": long_text},
+                    "on_ctrl_shift": {"link": "taskkill", "args": "/F /IM streetfighter6.exe", "workdir": "C:/"}},
+                    "": {"target": {"link": long_text, "args": long_text}}})
+                before = (data / "commands.json").read_bytes()
+                def edit_empty(editor):
+                    link = editor.edit_by_id["link"]
+                    self.assertIs(editor.controls[editor.focus_index], link)
+                    self.assertEqual(link.getSelection(), [0, len(long_text)])
+                    self.assertGreater(link.scroll_pos, 0)
+                    self.assertEqual(editor.edit_by_id["args"].scroll_pos, -link.margin1)
+                    editor._on_cancel()
+                self.assertIsNone(self.run_editor(edit_empty, target=""))
+                def edit(editor):
+                    self.assertEqual(editor.edits[0].getSelection(), [0, 2])
+                    for field in ("link", "args", "workdir"):
+                        control = editor.edit_by_id[field]
+                        self.assertEqual(control.scroll_pos, -control.margin1)
+                        self.assertEqual(control.getSelection(), [0, 0])
+                    editor._on_keydown(ckit.VK_L, ckit.MODKEY_ALT)
+                    link = editor.edit_by_id["link"]
+                    self.assertEqual(link.getSelection(), [0, len(long_text)])
+                    self.assertGreater(link.scroll_pos, 0)
+                    editor._on_keydown(ckit.VK_END, 0)
+                    self.assertEqual(link.getSelection(), [len(long_text), len(long_text)])
+                    self.assertGreater(link.scroll_pos, 0)
+                    previous = link.scroll_pos
+                    editor.paint()
+                    self.assertEqual(link.scroll_pos, previous)
+                    editor._on_keydown(ckit.VK_HOME, 0)
+                    self.assertEqual(link.getSelection(), [0, 0])
+                    self.assertEqual(link.scroll_pos, -link.margin1)
+                    editor._on_keydown(ckit.VK_TAB, 0)
+                    args = editor.edit_by_id["args"]
+                    self.assertEqual(args.getSelection(), [0, len(long_text)])
+                    self.assertGreater(args.scroll_pos, 0)
+                    for field in ("link", "args", "workdir"):
+                        control = editor.edit_by_id[field]
+                        control.makeVisible(len(control.getText()))
+                        self.assertGreater(control.scroll_pos, 0)
+                    editor._on_keydown(ckit.VK_X, ckit.MODKEY_ALT)
+                    self.assertIs(editor.controls[editor.focus_index], editor.modifier_choice)
+                    for field, text in (("link", "taskkill"), ("args", "/F /IM streetfighter6.exe"), ("workdir", "C:/")):
+                        control = editor.edit_by_id[field]
+                        self.assertEqual(control.getText(), text)
+                        self.assertEqual(control.scroll_pos, -control.margin1)
+                        self.assertEqual(control.getSelection(), [0, 0])
+                        with patch.object(editor, "putString", wraps=editor.putString) as draws:
+                            control.paint()
+                        self.assertIn(text, [call.args[5] for call in draws.call_args_list])
+                    editor._on_keydown(ckit.VK_L, ckit.MODKEY_ALT)
+                    editor._on_char(ord("z"), 0)
+                    self.assertEqual(link.getText(), "z")
+                    for _ in range(100):
+                        editor._on_char(ord("a"), 0)
+                    self.assertGreater(link.scroll_pos, 0)
+                    editor._on_keydown(ckit.VK_HOME, 0)
+                    self.assertEqual(link.scroll_pos, -link.margin1)
+                    self.assertEqual((data / "commands.json").read_bytes(), before)
+                    editor._on_cancel()
+                self.assertIsNone(self.run_editor(edit, target="sf"))
+
+            def test_native_editor_mouse_focus_preserves_selection_and_scroll(self):
+                text = "C:/" + "日本語😀/" * 20 + "tail.exe"
+                self.apply({"sf": {"target": {"link": text}}})
+                def edit(editor):
+                    editor._on_keydown(ckit.VK_L, ckit.MODKEY_ALT)
+                    link = editor.edit_by_id["link"]
+                    left, top = editor.charToClient(link.x, link.y)
+                    scroll = link.scroll_pos
+                    self.assertGreater(scroll, 0)
+                    editor._on_keydown(ckit.VK_A, ckit.MODKEY_ALT)
+                    self.assertTrue(editor._on_left_button_down(left + 1, top, 0))
+                    self.assertIs(editor.controls[editor.focus_index], link)
+                    self.assertEqual(link.getSelection(), [0, len(text)])
+                    self.assertEqual(link.scroll_pos, scroll)
+                    editor._on_keydown(ckit.VK_END, 0)
+                    self.assertTrue(editor._on_left_button_down(left + 1, top, ckit.MODKEY_SHIFT))
+                    self.assertEqual(link.getSelection(), [len(text), len(text)])
+                    self.assertEqual(link.scroll_pos, scroll)
+                    editor._on_cancel()
+                self.assertIsNone(self.run_editor(edit, target="sf"))
 
             def test_native_modifier_enter_and_live_settings(self):
                 for modifier, key_mod in (("target", 0), ("on_ctrl", 2),
@@ -4788,7 +4937,7 @@ if not close_output:
                         for field in ("link", "args", "workdir"):
                             text = expected[clnch_cmdeditor.MODIFIERS[index]][field]
                             self.assertEqual(editor.edit_by_id[field].getText(), text)
-                            self.assertEqual(editor.edit_by_id[field].getSelection(), [len(text), len(text)])
+                            self.assertEqual(editor.edit_by_id[field].getSelection(), [0, 0])
                         self.assertEqual(editor.view_choice.getValue(), index % 3)
                     self.key(ckit.VK_RETURN, window=editor)
                 with patch.object(self.ui, "reload_commands", wraps=self.ui.reload_commands) as reload_commands:

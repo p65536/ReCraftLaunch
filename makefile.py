@@ -272,6 +272,7 @@ def document_language(lang):
     with open(f"{objects}/extensions.md", "w", encoding="utf-8") as page:
         page.write(f"{title} {{#extensions}}\n{body}")
     shutil.copyfile(f"{source_dir}/licenses.md", f"{objects}/licenses.md")
+    shutil.copyfile(f"{source_dir}/release_notes.md", f"{objects}/release_notes.md")
     for source, name in (("LICENSE.md", "recraftlaunch"),
                          ("licenses/craftlaunch_LICENSE.md", "craftlaunch"),
                          ("ckit/LICENSE.md", "ckit"), ("pyauto/LICENSE.md", "pyauto")):
@@ -289,7 +290,8 @@ def document_language(lang):
                      f"PROJECT_NUMBER = {VERSION}\n"
                      f"ENABLED_SECTIONS = {language.lower()}\nHTML_OUTPUT = html/{lang}\n"
                      f"EXAMPLE_PATH = {objects}\nMARKDOWN_ID_STYLE = GITHUB\n"
-                     f"INPUT += {objects}/commands.md {objects}/extensions.md {objects}/licenses.md\n")
+                     f"INPUT += {objects}/commands.md {objects}/extensions.md "
+                     f"{objects}/licenses.md {objects}/release_notes.md\n")
     subprocess.run([doxygen, f"{objects}/doxyfile"], check=True)
     shutil.copytree(f"docs/{lang}/images", f"{output}/images", ignore=shutil.ignore_patterns("*.pdn",))
     with open(f"{output}/language.txt", "w", encoding="utf-8") as marker:

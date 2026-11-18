@@ -2,6 +2,7 @@
 import contextlib
 import ctypes
 import io
+import os
 import subprocess
 import sys
 import tempfile
@@ -235,10 +236,50 @@ class ArgumentStringTests(unittest.TestCase):
                 with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
                     self.enter(text)
                 self.assertEqual(errors.getvalue(), "")
-                expected = "" if silent else clnch_mainwindow.strings.EXECUTE_ERROR + "\n  " + str(error) + "\n"
+                name = "_ra" if text.startswith("_ra;") else "child"
+                expected = "" if silent else (clnch_mainwindow.strings.EXECUTE_ERROR + "\n  " + str(error)
+                    + "\n  Name: " + name + "\n  Modifier: Enter\n  Link: tool.exe\n  WorkDir: \n")
                 self.assertEqual(output.getvalue(), expected)
         self.shell.side_effect = None
         self.assertEqual(self.enter("child")[:3], (None, "tool.exe", ""))
+
+    def test_direct_shell_command_does_not_read_modifier(self):
+        class LaunchInfo(ckit.CommandInfo):
+            def __getattribute__(self, name):
+                if name == "mod":
+                    raise AssertionError("Direct ShellExecuteCommand read the modifier")
+                return super().__getattribute__(name)
+
+        self.window.ShellExecuteCommand(None, "notepad.exe", "", "")(LaunchInfo())
+        self.shell.assert_called_once_with(None, "notepad.exe", "", "", None)
+
+    def test_failure_context_keeps_input_modifier_across_aliases_and_defaults(self):
+        for fallback in (False, True):
+            for mod, label in ((0, "Enter"), (2, "Ctrl+Enter"), (4, "Shift+Enter"), (6, "Ctrl+Shift+Enter")):
+                with self.subTest(fallback=fallback, mod=mod):
+                    actions = {key: {"link": "child"} for key in ("target", "on_ctrl", "on_shift", "on_ctrl_shift")}
+                    self.configure({"alias": {"target": actions["target"]} if fallback else actions,
+                        "child": {"target": {"link": "%FAILURE_ROOT%/missing.exe", "workdir": "%FAILURE_ROOT%"}}})
+                    output = io.StringIO()
+                    with (patch.dict(os.environ, FAILURE_ROOT="D:/日本語 folder"),
+                          contextlib.redirect_stdout(output)):
+                        self.shell.side_effect = ctypes.WinError(2)
+                        self.enter("alias", mod)
+                    self.assertIn("  Name: alias\n  Modifier: " + label
+                        + "\n  Link: D:/日本語 folder/missing.exe\n  WorkDir: D:/日本語 folder\n", output.getvalue())
+                    self.assertEqual(output.getvalue().count(clnch_mainwindow.strings.EXECUTE_ERROR), 1)
+
+    def test_runas_failure_context_keeps_document_link_and_derived_workdir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            document = Path(directory) / "日本語 document.txt"
+            document.touch()
+            self.configure({"doc": {"target": {"link": '"' + str(document) + '"'}}})
+            output = io.StringIO()
+            with (patch.object(platform, "resolve_elevated_document", return_value=("viewer.exe", "--document")),
+                  contextlib.redirect_stdout(output)):
+                self.shell.side_effect = ctypes.WinError(2)
+                self.assertEqual(self.enter("_ra;doc")[:3], ("runas", "viewer.exe", "--document"))
+            self.assertIn("  Link: " + str(document) + "\n  WorkDir: " + directory + "\n", output.getvalue())
 
     def test_association_retains_raw_tail_and_windows_args(self):
         with tempfile.TemporaryDirectory() as directory:

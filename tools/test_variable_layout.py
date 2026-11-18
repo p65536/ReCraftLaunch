@@ -683,6 +683,33 @@ class VariableLayoutTests(unittest.TestCase):
                             box.destroy()
                         parent.destroy()
 
+    def test_editor_link_error_keeps_full_context_and_fits_in_both_languages(self):
+        english = runpy.run_path(str(ROOT / "clnch/clnch_strings_en.py"))
+        for template in (strings.COMMAND_RELATIVE_LINK_GUI, english["COMMAND_RELATIVE_LINK_GUI"]):
+            for scale in (1.0, 1.5, 2.0):
+                with self.subTest(template=template, scale=scale):
+                    parent = self.parent(scale)
+                    message = template.format(name="sf", modifier="Ctrl+Shift+Enter",
+                        link="taskkill /F /IM " + "日本語 long folder/" * 40 + "tool.exe")
+                    box = None
+                    try:
+                        box = clnch_msgbox.MessageBox(300, 250, parent, False, 0, strings.ERROR_INPUT_TITLE, message,
+                                                     left_align=True)
+                        self.assert_inside(box)
+                        self.assertEqual("".join(box.message_lines), message.replace("\n", ""))
+                        box.onKeyDown(ckit.VK_END, 0)
+                        self.assertEqual(box.scroll_pos + box.visible_rows, len(box.message_lines))
+                        with patch.object(box, "putString", wraps=box.putString) as draws:
+                            box.paint()
+                        self.assert_draws_fit(box, draws.call_args_list)
+                        for row, line in enumerate(box.message_lines[box.scroll_pos:box.scroll_pos + box.visible_rows], 1):
+                            self.assertTrue(any(call.args[0] == 1 and call.args[1] == row and call.args[5] == line
+                                                for call in draws.call_args_list))
+                    finally:
+                        if box:
+                            box.destroy()
+                        parent.destroy()
+
     def test_message_buttons_determine_width_and_wrap_vertically_with_matching_hits(self):
         for scale in (1.0, 1.5, 2.0):
             with self.subTest(scale=scale), patch.multiple(strings,

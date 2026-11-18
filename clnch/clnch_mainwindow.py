@@ -25,6 +25,7 @@ import clnch_standard
 import clnch_statusbar
 import clnch_strings as strings
 from clnch_cmdstore import load_commands, unquote_path, validate_link
+from clnch_commandexecutor import execution_error_context
 
 import ckit
 import clnch_native
@@ -1540,13 +1541,15 @@ class MainWindow(ckit.TextWindow):
             _directory = clnch_misc.replaceMacro(
                 _directory, {"%%": "%", "%param%": path_args}, environ=True
             )
+            expanded_link = _filename
 
             try:
                 if _command_name is not None:
-                    validate_link(_filename, _command_name)
+                    validate_link(_filename)
                     unquoted = unquote_path(_filename)
                     if os.path.isabs(unquoted):
                         _filename = unquoted
+                        expanded_link = unquoted
                     # Derive from the exact expanded Link passed to Shell, without expanding it again.
                     if not directory and os.path.isfile(_filename):
                         _directory = os.path.dirname(_filename)
@@ -1559,6 +1562,8 @@ class MainWindow(ckit.TextWindow):
                     return
                 print(strings.EXECUTE_ERROR)
                 print("  %s" % str(e))  # noqa: UP031  # Preserve percent-s conversion for public values.
+                if _command_name is not None:
+                    print(execution_error_context(_command_name, job_item.command_mod, expanded_link, _directory))
 
         def jobShellExecuteFinished(job_item):
             pass
@@ -1567,6 +1572,8 @@ class MainWindow(ckit.TextWindow):
             job_item = ckit.JobItem(jobShellExecute, jobShellExecuteFinished)
             job_item.args = info.args
             job_item.arg_string = getattr(info, "arg_string", None)
+            if _command_name is not None:
+                job_item.command_mod = getattr(info, "_command_mod", getattr(info, "mod", 0))
             clnch_misc._require_job_queue(ckit.JobQueue.defaultQueue()).enqueue(job_item)
 
         return command_ShellExecute

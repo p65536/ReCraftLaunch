@@ -23,8 +23,8 @@ def unquote_path(path):
     return path
 
 
-def validate_link(link, name):
-    """Reject explicit relative Windows paths; retain bare names and Shell URIs."""
+def validate_link(link, name=None):
+    """Reject explicit relative Windows paths. Include the command context when given."""
     path = unquote_path(link.strip())
     if ntpath.isabs(path):
         return
@@ -32,7 +32,8 @@ def validate_link(link, name):
     if not drive and re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", path):
         return
     if drive or ntpath.dirname(path) or path in (".", ".."):
-        raise ValueError(strings.COMMAND_RELATIVE_LINK.format(name=name, link=link))
+        context = "" if name is None else strings.COMMAND_RELATIVE_LINK_CONTEXT.format(name=name, link=link)
+        raise ValueError(strings.COMMAND_RELATIVE_LINK.format(context=context))
 
 
 def validate_commands(commands, *, editor=False):

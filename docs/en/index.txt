@@ -849,6 +849,7 @@ Reference Documentation
 - **Detailed key operation reference**: See the `Operation Reference <./commands.html>`_.
 - **Manual JSON editing format**: See `commands.json Format <./command_json.html>`_.
 - **Differences from CraftLaunch 3.40**: See `Differences from CraftLaunch <./differences.html>`_.
+- **ReCraftLaunch release notes**: `ReCraftLaunch Release Notes <./release_notes.html>`_
 - **Original CraftLaunch changelog**: See `CraftLaunch changelog <./changes.html>`_ (Japanese original).
 - **Python extension API reference**: See the `API reference <topics.html>`_.
 

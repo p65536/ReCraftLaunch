@@ -69,6 +69,7 @@ class MessageBox(ckit.TextWindow):
     #  @param title タイトル文字列。
     #  @param message メッセージ文字列。改行を使えます。
     #  @param return_modkey getResultを(結果, 修飾キー)形式にするか。
+    #  @param left_align 本文を左寄せにするか。既定は中央寄せ。ボタンの配置には影響しません。
     #  親の状態管理・ループ・破棄は呼出し元が所有します。通常はpopMessageBoxを使ってください。
     #
     # \~english
@@ -80,6 +81,7 @@ class MessageBox(ckit.TextWindow):
     #  @param title Title string.
     #  @param message Message string, optionally containing newlines.
     #  @param return_modkey Make getResult return (result, modifiers).
+    #  @param left_align Left-align the body; defaults to centered. Does not change button placement.
     #  The caller owns parent state, message loop and destruction; normally use popMessageBox.
     #
     # \~
@@ -93,6 +95,8 @@ class MessageBox(ckit.TextWindow):
         title="",
         message="",
         return_modkey=False,
+        *,
+        left_align=False,
     ):
         ckit.TextWindow.__init__(
             self,
@@ -124,6 +128,7 @@ class MessageBox(ckit.TextWindow):
             self.message = message
             self.title = title
             self.return_modkey = return_modkey
+            self.left_align = left_align
             self.scroll_pos = 0
             self.pressed_button = None
             self._layout(x, y)
@@ -323,7 +328,7 @@ class MessageBox(ckit.TextWindow):
         for row, line in enumerate(lines, 1):
             message_width = self.getStringWidth(line)
             self.putString(
-                (self.width() - message_width) // 2,
+                1 if self.left_align else (self.width() - message_width) // 2,
                 row,
                 message_width,
                 1,
@@ -378,6 +383,7 @@ class MessageBox(ckit.TextWindow):
 #  @param title          メッセージボックスのタイトルバーに表示する文字列
 #  @param message        メッセージ文字列
 #  @param return_modkey  閉じたときのモディファイアキーの状態を取得するかどうか
+#  @param left_align     本文を左寄せにするか。既定は中央寄せ。ボタンの配置には影響しません。
 #  @return               引数 return_modkey が False の場合は結果値、引数 return_modkey が True の場合は ( 結果値, モディファイアキーの状態 ) を返す
 # 
 #  引数 msgbox_type には、以下のいずれかを渡します。
@@ -413,6 +419,7 @@ class MessageBox(ckit.TextWindow):
 #  @param title          Text displayed in the message-box title bar
 #  @param message        Message text
 #  @param return_modkey  Return the modifier keys held when the box closes
+#  @param left_align     Left-align the body; defaults to centered. Does not change button placement.
 #  @return               The result if return_modkey is False; otherwise (result, modifier_key_state).
 # 
 #  Pass one of the following values as msgbox_type.
@@ -442,7 +449,7 @@ class MessageBox(ckit.TextWindow):
 #  @sa MessageBox
 #
 # \~
-def popMessageBox(main_window, msgbox_type, title, message, return_modkey=False):
+def popMessageBox(main_window, msgbox_type, title, message, return_modkey=False, *, left_align=False):
     was_enabled = main_window.isEnabled()
     main_window_rect = main_window.getWindowRect()
     pos = (
@@ -450,7 +457,7 @@ def popMessageBox(main_window, msgbox_type, title, message, return_modkey=False)
         (main_window_rect[1] + main_window_rect[3]) // 2,
     )
     msgbox = MessageBox(
-        pos[0], pos[1], main_window, False, msgbox_type, title, message, return_modkey
+        pos[0], pos[1], main_window, False, msgbox_type, title, message, return_modkey, left_align=left_align
     )
     with clnch_misc._modal_dialog_scope(main_window, msgbox, was_enabled):
         clnch_misc.adjustWindowPosition(main_window, msgbox, default_up=False)

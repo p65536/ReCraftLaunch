@@ -77,6 +77,7 @@ class Edit:
         self.x, self.y, self.width, self.height = x, y, width, height
         self.text = text
         self.keys = []
+        self.selection = kwargs.get("selection", [0, 0])
     def setPosSize(self, x, y, width, height):
         self.x, self.y, self.width, self.height = x, y, width, height
     def paint(self): pass
@@ -84,6 +85,7 @@ class Edit:
     def getText(self): return self.text
     def setText(self, text): self.text = text
     def setSelection(self, selection): self.selection = selection
+    def makeVisible(self, position): pass
     def onKeyDown(self, vk, mod): self.keys.append((vk, mod))
     def onChar(self, ch, mod): self.text += ch
 
@@ -131,7 +133,7 @@ class EditorTests(unittest.TestCase):
             "VK_E": 69, "VK_C": 67, "VK_S": 83, "VK_X": 88, "VK_1": 49, "VK_2": 50, "VK_3": 51,
             "VK_N": 78, "VK_L": 76, "VK_A": 65, "VK_W": 87, "VK_V": 86, "VK_M": 77}
         const.__dict__.update(constants)
-        msgbox = SimpleNamespace(MSGBOX_TYPE_OK=0, popMessageBox=lambda *args: self.errors.append(args))
+        msgbox = SimpleNamespace(MSGBOX_TYPE_OK=0, popMessageBox=lambda *args, **kwargs: self.errors.append(args))
         path_namespace = {"os": os}
         load_functions("clnch/clnch_misc.py", {"replaceMacro"}, path_namespace)
         modules = {"ckit": ckit, "ckit.ckit_const": const, "clnch_msgbox": msgbox,
@@ -174,6 +176,15 @@ class EditorTests(unittest.TestCase):
                 fit.assert_called_with(editor)
             below.assert_not_called()
 
+    def test_only_input_error_body_requests_left_alignment(self):
+        editor = self.editor({"sf": {"target": {"link": "notepad.exe"}}}, "sf")
+        for title, left_align in ((self.module.strings.ERROR_INPUT_TITLE, True),
+                                 (self.module.strings.ERROR_SAVE_TITLE, False)):
+            with self.subTest(title=title), patch.object(self.module.clnch_msgbox, "popMessageBox") as popup:
+                editor._show_error(title, "message")
+                popup.assert_called_once_with(editor, 0, title, "message", left_align=left_align)
+        editor.destroy()
+
     def test_relative_link_warning_keeps_file_fields_and_allows_correction(self):
         for link in ("tools/tool.exe", r".\tool.exe", "../folder", r"\tools\tool.exe", "C:tool.exe",
                      "%RECRAFT_RELATIVE%/tool.exe", "tools/%param%"):
@@ -188,8 +199,9 @@ class EditorTests(unittest.TestCase):
                 self.assertEqual(editor.edit_by_id["link"].getText(), link)
                 self.assertFalse(editor.result_saved)
                 self.assertFalse(editor.closed)
-                self.assertEqual(self.errors[-1][-1], self.module.strings.COMMAND_RELATIVE_LINK_GUI)
-                self.assertEqual(len(self.errors[-1][-1].splitlines()), 2)
+                self.assertEqual(self.errors[-1][-1], self.module.strings.COMMAND_RELATIVE_LINK_GUI.format(
+                    name="bad", modifier="Enter", link=link))
+                self.assertEqual(editor.controls[editor.focus_index], editor.edit_by_id["link"])
                 editor.edit_by_id["link"].setText("notepad.exe")
                 self.assertTrue(editor._save())
                 editor.destroy()
@@ -199,9 +211,52 @@ class EditorTests(unittest.TestCase):
                 "other": {"target": {"link": "tools/other.exe"}}}
         editor = self.editor(data, "edited")
         self.assertFalse(editor._save())
-        editor.draft._actions["on_shift"]["link"] = "C:/Folder"
+        self.assertEqual(editor.draft.modifier_index, 2)
+        self.assertEqual(editor.edit_by_id["link"].getText(), "../folder")
+        editor.edit_by_id["link"].setText("C:/Folder")
         self.assertTrue(editor._save())
         self.assertEqual(cmd_store.load_commands(self.path)["other"]["target"]["link"], "tools/other.exe")
+        editor.destroy()
+
+    def test_link_error_identifies_and_focuses_each_modifier_without_losing_edits(self):
+        link = "taskkill /F /IM " + "long-name-" * 40 + "tool.exe"
+        for language in ("ja", "en"):
+            wording = __import__("clnch_strings_" + language)
+            for index, modifier in enumerate(cmd_store.MODIFIERS):
+                with self.subTest(language=language, modifier=modifier), patch.object(
+                    self.module.strings, "COMMAND_RELATIVE_LINK_GUI", wording.COMMAND_RELATIVE_LINK_GUI,
+                ):
+                    data = {"sf": {key: {"link": link if key == modifier else "notepad.exe",
+                                          "args": "  fixed  ", "workdir": "C:/Work"}
+                                   for key in cmd_store.MODIFIERS}}
+                    editor = self.editor(data, "sf")
+                    before = self.path.read_bytes()
+                    editor.edit_by_id["args"].setText("  edited args  ")
+                    self.assertFalse(editor._save())
+                    self.assertEqual(self.errors[-1][-1].splitlines()[:3], ["Name: sf",
+                        "Modifier: " + ("Enter", "Ctrl+Enter", "Shift+Enter", "Ctrl+Shift+Enter")[index],
+                        "Link: " + link])
+                    self.assertEqual(editor.modifier_choice.getValue(), index)
+                    self.assertEqual(editor.draft.modifier_index, index)
+                    self.assertEqual(editor.edit_by_id["link"].getText(), link)
+                    self.assertEqual(editor.controls[editor.focus_index], editor.edit_by_id["link"])
+                    self.assertEqual(editor.draft._actions["target"]["args"], "  edited args  ")
+                    self.assertEqual(self.path.read_bytes(), before)
+                    editor.edit_by_id["link"].setText("taskkill")
+                    self.assertTrue(editor._save())
+                    saved = cmd_store.load_commands(self.path)["sf"]
+                    self.assertEqual(saved["target"]["args"], "  edited args  ")
+                    self.assertEqual(saved[modifier]["workdir"], "C:/Work")
+                    editor.destroy()
+
+    def test_relative_link_warning_matches_requested_japanese_text(self):
+        editor = self.editor({"sf": {"target": {"link": "notepad.exe"},
+            "on_ctrl_shift": {"link": "taskkill /F /IM streetfighter6.exe"}}}, "sf")
+        self.assertFalse(editor._save())
+        self.assertEqual(self.errors[-1][-1],
+            "Name: sf\nModifier: Ctrl+Shift+Enter\nLink: taskkill /F /IM streetfighter6.exe\n\n"
+            "Linkが相対パスとして解釈されています。\n以下のいずれかが原因と考えられます。\n"
+            "・ファイル／フォルダを相対パスで指定している\n・実行先と引数をまとめてLinkに指定している")
         editor.destroy()
 
     def test_editor_retains_aliases_environment_absolute_paths_and_runtime_link_macros(self):
@@ -767,7 +822,7 @@ class EditorTests(unittest.TestCase):
         editor._on_keydown(65, 1)
         self.assertEqual(editor.edits[2].selection, [0, 7])
 
-    def test_focus_marker_and_mouse_retained_selection(self):
+    def test_focus_marker_and_mouse_preserves_selection(self):
         editor = self.editor({"test": {"target": {"link": "tool.exe"}}}, "test")
         paints = []
         editor.putString = lambda *args: paints.append(args)
@@ -778,12 +833,15 @@ class EditorTests(unittest.TestCase):
             editor.paint()
             self.assertEqual([(args[0], args[1]) for args in paints if args[-1] == ">"], [(0, row)])
         editor._focus_field("link")
-        self.assertEqual(editor.edits[1].selection, [0, 8])
-        editor._on_left_button_down(150, editor.charToClient(0, 3)[1], 0)
-        self.assertEqual(editor.edits[1].selection, [0, 8])
-        editor.edits[1].setSelection([3, 3])
-        editor._on_left_button_down(150, editor.charToClient(0, 3)[1], 0)
-        self.assertEqual(editor.edits[1].selection, [3, 3])
+        edit = editor.edits[1]
+        left, top = editor.charToClient(edit.x, edit.y)
+        editor._focus_field("args")
+        self.assertTrue(editor._on_left_button_down(left + 4 * editor.getCharSize()[0], top, 0))
+        self.assertEqual(editor.focus_index, 1)
+        self.assertEqual(edit.selection, [0, 8])
+        edit.setSelection([3, 3])
+        self.assertTrue(editor._on_left_button_down(left + 6 * editor.getCharSize()[0], top, 4))
+        self.assertEqual(edit.selection, [3, 3])
 
     def test_direct_access_keys_select_and_keep_action_values(self):
         editor = self.editor()

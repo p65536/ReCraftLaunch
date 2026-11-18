@@ -846,6 +846,7 @@ ReCraftLaunchを新しいバージョンに更新する手順は次のとおり�
 - **詳細キー操作一覧**: `操作一覧 <./commands.html>`_ を参照してください。
 - **commands.jsonの直接編集仕様**: `commands.jsonの形式 <./command_json.html>`_ を参照してください。
 - **CraftLaunch 3.40との違い**: `CraftLaunchとの機能差異 <./differences.html>`_ を参照してください。
+- **ReCraftLaunchの更新履歴**: `ReCraftLaunchの更新履歴 <./release_notes.html>`_
 - **移植元の変更履歴**: `CraftLaunchの更新履歴 <./changes.html>`_ を参照してください（日本語原文資料）。
 - **Python拡張用API**: `APIリファレンス <topics.html>`_ を参照してください。
 

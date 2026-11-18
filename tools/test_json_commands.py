@@ -330,7 +330,9 @@ class JsonCommandTests(unittest.TestCase):
                         self.assertEqual(len(pending), 1)
                         pending[0].subthread_func(pending[0])
                         self.assertEqual(output.getvalue().splitlines(),
-                                         [self.env["strings"].EXECUTE_ERROR, "  folder launch failed"])
+                            [self.env["strings"].EXECUTE_ERROR, "  folder launch failed", "  Name: tool",
+                             "  Modifier: " + ("Shift+Enter" if mod == 4 else "Ctrl+Enter"),
+                             "  Link: tool.exe", "  WorkDir: "])
                         self.assertEqual(shell.call_count, int(stage == "shell"))
                         resolve.side_effect = exists.side_effect = shell.side_effect = None
                         shell.reset_mock()
@@ -819,6 +821,7 @@ class JsonCommandTests(unittest.TestCase):
         namespace.update(ckit=SimpleNamespace(JobItem=JobItem, JobQueue=SimpleNamespace(defaultQueue=lambda: queue)),
             validate_link=sys.modules["clnch_cmdstore"].validate_link,
             unquote_path=sys.modules["clnch_cmdstore"].unquote_path, strings=self.env["strings"],
+            execution_error_context=sys.modules["clnch_commandexecutor"].execution_error_context,
             clnch_misc=SimpleNamespace(replaceMacro=namespace["replaceMacro"], joinArgs=namespace["joinArgs"],
                                       _require_job_queue=namespace["_require_job_queue"]),
             pyauto=SimpleNamespace(shellExecute=lambda *args: self.calls.append(args)))
@@ -910,9 +913,13 @@ class JsonCommandTests(unittest.TestCase):
             with contextlib.redirect_stdout(output), patch.dict(os.environ, RECRAFT_RELATIVE="tools"):
                 self.run_command("outer")
             self.assertEqual(self.calls, [])
-            self.assertEqual(output.getvalue().count(self.env["strings"].EXECUTE_ERROR), 1)
-            self.assertIn("outer", output.getvalue())
-            self.assertIn("Link:", output.getvalue())
+            wording = self.env["strings"]
+            self.assertEqual(output.getvalue().count(wording.EXECUTE_ERROR), 1)
+            self.assertIn(wording.COMMAND_RELATIVE_LINK.format(context=""), output.getvalue())
+            self.assertEqual(output.getvalue().count("outer"), 1)
+            self.assertEqual(output.getvalue().count("Link:"), 1)
+            self.assertIn("  Modifier: Enter\n", output.getvalue())
+            self.assertIn("  WorkDir: C:/Tools\n", output.getvalue())
         self.configure({"good": {"target": action("notepad.exe", "--fixed"),
                                  "on_ctrl": action("tools/bad.exe")}})
         self.run_command("good", ["../document.txt"])

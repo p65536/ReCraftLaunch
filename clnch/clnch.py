@@ -23,6 +23,8 @@ from clnch_resource import *
 #
 #  @subpage differences
 #
+#  @subpage release_notes
+#
 #  @subpage changes
 #
 #  @subpage licenses
@@ -40,6 +42,8 @@ from clnch_resource import *
 #  @subpage extensions
 #
 #  @subpage differences
+#
+#  @subpage release_notes
 #
 #  @subpage changes
 #

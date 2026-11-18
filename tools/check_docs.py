@@ -65,7 +65,7 @@ language = (output / "language.txt").read_text(encoding="utf-8").strip()
 assert language in ("ja", "en"), f"Invalid help language: {language}"
 assert args.lang is None or language == args.lang, f"Unexpected help language: {language}"
 rst_pages = ("index.html", "changes.html", "differences.html", "command_json.html")
-for name in (*rst_pages, "commands.html", "extensions.html", "licenses.html", "topics.html",
+for name in (*rst_pages, "commands.html", "extensions.html", "licenses.html", "release_notes.html", "topics.html",
              "pyauto_native.html", "ckit_native.html", "clnch_native_api.html"):
     assert (output / name).is_file(), f"Missing generated page: {name}"
 
@@ -90,6 +90,8 @@ for page in pages:
         assert '<h1 class="title">' not in text, f"Repeated document title: {page.name}"
         assert "<style" not in text, f"Embedded stylesheet in {page.name}"
         assert 'href="rst2html_pygments.css"' in text, f"Missing document stylesheet: {page.name}"
+    if page.name == "index.html":
+        assert "./release_notes.html" in links.links, "Missing release notes link in the manual"
     if page.name == "commands.html":
         assert '<table class="markdownTable' in text, "Missing rendered operation table"
     if page.name == "extensions.html":

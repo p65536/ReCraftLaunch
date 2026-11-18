@@ -78,6 +78,10 @@ Editors opened from Command List appear to its right, with the tops of the title
 Name cannot contain semicolons (`;`) or whitespace characters, including Unicode whitespace. New-drop suggestions remove these characters; manually entered text is kept and checked when saving.
 Named commands can be saved with zero launch actions. GUI saving of the empty command requires at least one Link.
 
+If saving detects a relative Link, the warning shows Name, Modifier, and the entered Link with left-aligned body text. It lists relative paths and arguments included in Link as possible causes. Closing it selects that Modifier and focuses its Link field. Edits across all Modifiers and the original file are retained. Put arguments in Args, separately from Link.
+
+The initially focused field and fields reached with Tab or an access key select all text and scroll long values to the end. Other fields initially show the start of their text. Replacing field contents by switching Modifier or dropping files resets the caret and horizontal scroll to the start. Editing scrolls to follow the caret; repainting alone keeps the current view.
+
 | Operation | Keys / mouse |
 |---|---|
 | Next / previous field| Tab / Shift+Tab; selects all text in destination input |
@@ -86,6 +90,7 @@ Named commands can be saved with zero launch actions. GUI saving of the empty co
 | Select Modifier | Alt+E: None; Alt+C: Ctrl; Alt+S: Shift; Alt+X: Ctrl+Shift |
 | Select ViewMode | Alt+1: Normal; Alt+2: Minimized; Alt+3: Maximized |
 | Focus a field | Alt+N/L/A/W/V/M |
+| Focus a text field | Click. The field keeps its caret and selection. Use the keyboard to edit or select text. |
 | Save / cancel | Enter / Esc from any field |
 
 | Drop destination | Action |
@@ -117,6 +122,8 @@ Named commands can be saved with zero launch actions. GUI saving of the empty co
 | Accept / return | Enter / Esc |
 
 ## Console
+
+If a registered command fails to launch, the console shows Name, the invoked Modifier, the expanded Link, and WorkDir along with the error. Aliases retain the caller's Name and Modifier. Cancelling UAC for an administrator launch produces no log.
 
 | Operation | Keys / mouse |
 |---|---|

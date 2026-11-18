@@ -33,7 +33,8 @@ class CommandDataTests(unittest.TestCase):
                      ".", "..", '"tools\\two words.exe"'):
             with self.subTest(link=link), self.assertRaises(ValueError) as raised:
                 store.validate_link(link, "alias")
-            self.assertEqual(str(raised.exception), strings.COMMAND_RELATIVE_LINK.format(name="alias", link=link))
+            self.assertEqual(str(raised.exception), strings.COMMAND_RELATIVE_LINK.format(
+                context=strings.COMMAND_RELATIVE_LINK_CONTEXT.format(name="alias", link=link)))
 
     def test_relative_links_load_and_roundtrip_without_global_rejection(self):
         data = {"bad": {"target": {"link": "tools/tool.exe"}}, "good": {"target": {"link": "notepad.exe"}}}

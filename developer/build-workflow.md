@@ -32,7 +32,7 @@
 | `.vcxproj`・`.sln`・コンパイラ／SDK設定 | 該当構成のNative Build。出力先・ABI・CRT設定を変えた場合はRebuildと構成分離検査 | 配布工程に関係する場合は配布更新。ビルド設定だけではPythonやヘルプを更新しない |
 | `clnch/clnch.rc`・`clnch/resource.h`・`assets/app.ico` | ReCraftLaunchプロジェクトのNative Build | EXEの資材なので配布更新。ヘルプ用`docs/<lang>/images/app_icon.png`は独立した原稿で、必要なら別途更新 |
 | `clnch/clnch_resource.py`の`clnch_version` | Native Build、`compile`、`document`のすべて。EXE・library.zip・ヘルプへ番号を反映 | 配布更新。正本・EXE・library.zipの版が不一致ならパッケージ検査が拒否する |
-| `docs/ja/`・`docs/en/`の`index.txt`・`differences.txt`・`command_json.txt`・`extensions.md`・`licenses.md`、`docs/common/changes.txt` | `document`。C++ビルド・`compile`不要 | 生成HTMLが変わるため配布更新。日本語だけの原稿変更でも現行`document`は日英両方を生成・検査する |
+| `docs/ja/`・`docs/en/`の`index.txt`・`differences.txt`・`command_json.txt`・`extensions.md`・`licenses.md`・`release_notes.md`、`docs/common/changes.txt` | `document`。C++ビルド・`compile`不要 | 生成HTMLが変わるため配布更新。日本語だけの原稿変更でも現行`document`は日英両方を生成・検査する |
 | `docs/<lang>/commands.md` | `document`。HTMLと原稿を確認 | ヘルプのcommands.htmlと配布ルートのCOMMANDS.<lang>.mdの両方に反映するため配布更新 |
 | `docs/<lang>/readme.txt` | 原稿のリンク・形式・日英の内容を確認。これだけなら`document`も不要 | README.<lang>.txtへの直接コピーなので、理論上は収集・ZIP化だけで足りる。現行では配布更新が必要 |
 | `docs/<lang>/images/`の公開画像、`docs/doxyfile`・`footer.html`、`tools/rst2html_*` | `document`。画像・スタイル・参照と変更範囲の表示を確認 | 生成物へのコピー・変換が必要なので配布更新。画像は作者が手動更新する。コピー対象外の`*.pdn`だけを変更し、出力画像が同じなら再生成不要 |

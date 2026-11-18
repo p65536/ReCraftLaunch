@@ -29,8 +29,17 @@ def combine_arguments(fixed, incoming):
     return fixed + " " + incoming if fixed and incoming else fixed or incoming
 
 
+def execution_error_context(name, mod, link, workdir):
+    modifier = {0: "Enter", MODKEY_CTRL: "Ctrl+Enter", MODKEY_SHIFT: "Shift+Enter",
+                MODKEY_CTRL | MODKEY_SHIFT: "Ctrl+Shift+Enter"}[mod]
+    return strings.COMMAND_EXECUTE_CONTEXT.format(
+        name=name or strings.COMMAND_EMPTY, modifier=modifier, link=link, workdir=workdir,
+    )
+
+
 class ActionInfo:
-    def __init__(self, args, workdir=None, shell_verb=None, view_mode=None, alias_path=(), arg_string=None):
+    def __init__(self, args, workdir=None, shell_verb=None, view_mode=None, alias_path=(), arg_string=None,
+                 command_mod=0):
         self.mod = 0
         self.args = args
         self.arg_string = arg_string
@@ -38,6 +47,7 @@ class ActionInfo:
         self.shell_verb = shell_verb
         self.view_mode = view_mode
         self._alias_path = alias_path
+        self._command_mod = command_mod
 
 
 class CommandExecutor:
@@ -85,6 +95,7 @@ class CommandExecutor:
                     view_mode=getattr(info, "view_mode", None),
                     alias_path=getattr(info, "_alias_path", ()),
                     arg_string=getattr(info, "arg_string", None),
+                    command_mod=getattr(info, "_command_mod", info.mod),
                 ),
                 name,
             )
@@ -106,6 +117,7 @@ class CommandExecutor:
             if default_action == "mapped_folder":
                 source_roots = tuple(settings["SOURCE_ROOTS"])
                 destination_root = settings[modifier + "_DESTINATION_ROOT"]
+            command_mod = getattr(info, "_command_mod", info.mod)
 
             def jobOpenFolder(job_item):
                 # Keep filesystem/OS lookup and Shell waits off the UI thread.
@@ -119,6 +131,7 @@ class CommandExecutor:
                 except Exception as e:  # noqa: BLE001  # Match ShellExecuteCommand's launch-failure notification.
                     print(strings.EXECUTE_ERROR)
                     print("  %s" % str(e))  # noqa: UP031  # Match the existing launch-error format.
+                    print(execution_error_context(name, command_mod, real_path, workdir))
 
             job_item = ckit.JobItem(jobOpenFolder, None)
             clnch_misc._require_job_queue(ckit.JobQueue.defaultQueue()).enqueue(job_item)
@@ -163,6 +176,7 @@ class CommandExecutor:
                     view_mode=view_mode,
                     alias_path=alias_path,
                     arg_string=combined,
+                    command_mod=getattr(info, "_command_mod", info.mod),
                 )
             )
 
@@ -204,6 +218,7 @@ class CommandExecutor:
             view_mode=getattr(info, "view_mode", None),
             alias_path=getattr(info, "_alias_path", ()),
             arg_string=args,
+            command_mod=getattr(info, "_command_mod", info.mod),
         )
         self.run_action(
             {"link": link},

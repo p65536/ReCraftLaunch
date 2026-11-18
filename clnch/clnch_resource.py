@@ -2,7 +2,7 @@ import clnch_strings as strings
 
 clnch_appname = "ReCraftLaunch"
 clnch_dirname = "ReCraftLaunch"
-clnch_version = "1.0.0"
+clnch_version = "1.0.1"
 clnch_window_class_prefix = "ReClnch"
 clnch_window_class = clnch_window_class_prefix + "WindowClass"
 
